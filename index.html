@@ -1,0 +1,1181 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>LED Multi-Screen Map</title>
+<style>
+  body { background:#1e1e1e; color:#ddd; font-family:sans-serif; margin:0; padding:20px; }
+  h2 { margin-top:0; }
+  .panel { background:#2a2a2a; padding:15px; border-radius:8px; margin-bottom:15px; }
+  .row { display:flex; gap:20px; flex-wrap:wrap; align-items:center; }
+  label { font-size:13px; display:flex; flex-direction:column; gap:4px; }
+  input[type="number"], input[type="text"] { padding:4px; background:#1e1e1e; color:#ddd; border:1px solid #555; border-radius:4px; }
+  input[type="number"] { width:90px; }
+  input[type="text"] { width:180px; }
+  input[type="color"] { width:50px; height:30px; border:none; background:none; }
+  button { background:#007acc; color:white; border:none; padding:8px 14px; cursor:pointer; border-radius:4px; font-size:14px; }
+  button:hover { background:#0091f0; }
+  button.active { background:#4ec9b0; color:#111; font-weight:bold; }
+  select { padding:5px; background:#1e1e1e; color:#ddd; border:1px solid #555; border-radius:4px; }
+  .info { font-size:14px; line-height:1.6; }
+  .info b { color:#4ec9b0; }
+  #preview { border:1px solid #444; max-width:100%; image-rendering:pixelated; margin-top:10px; background:#000; cursor:grab; }
+  .checkbox { flex-direction:row !important; align-items:center; gap:6px; }
+  .mode-btns { display:flex; gap:8px; flex-wrap:wrap; }
+  h4 { margin:0 0 10px 0; color:#4ec9b0; font-size:14px; }
+  .logo-block { background:#222; border:1px solid #444; border-radius:6px; padding:12px; flex:1; min-width:280px; }
+  .logo-block h5 { margin:0 0 10px 0; color:#f0a500; font-size:13px; }
+  .upload-btn { background:#444; font-size:12px; padding:6px 10px; }
+  .upload-btn:hover { background:#555; }
+  .logo-preview-wrap { width:80px; height:80px; background:#333; border:1px solid #555; border-radius:4px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .logo-preview-wrap img { max-width:100%; max-height:100%; object-fit:contain; }
+  .no-img { font-size:11px; color:#777; text-align:center; }
+  input[type="range"] { width:120px; }
+  /* Табы экранов */
+  .screen-tabs { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  .screen-tab { background:#333; padding:6px 12px; border-radius:5px 5px 0 0; cursor:pointer; font-size:13px; border:1px solid #444; border-bottom:none; display:flex; align-items:center; gap:8px; }
+  .screen-tab.active { background:#4ec9b0; color:#111; font-weight:bold; }
+  .screen-tab .del { color:#ff6b6b; font-weight:bold; padding:0 3px; }
+  .screen-tab.active .del { color:#900; }
+  .tab-add { background:#007acc; color:#fff; padding:6px 12px; border-radius:5px; }
+  .pos-panel { background:#20303a; border:1px solid #2a5060; }
+</style>
+</head>
+<body>
+
+<h2>LED Multi-Screen Map Generator</h2>
+
+<!-- ТАБЫ ЭКРАНОВ -->
+<div class="panel">
+  <div class="screen-tabs" id="screenTabs"></div>
+  <div class="row" style="margin-top:12px;">
+    <button class="tab-add" onclick="addScreen()">➕ Добавить экран</button>
+    <button onclick="duplicateScreen()">📋 Дублировать текущий</button>
+  </div>
+</div>
+
+<!-- ПОЗИЦИЯ ЭКРАНА В КОМПОЗИЦИИ -->
+<div class="panel pos-panel">
+  <h4>📐 Позиция экрана в общей композиции</h4>
+  <div class="row">
+    <label>X (px)<input type="number" id="posX" value="0" onchange="saveField('posX',this.value);generate()"></label>
+    <label>Y (px)<input type="number" id="posY" value="0" onchange="saveField('posY',this.value);generate()"></label>
+  </div>
+  <div class="row" style="margin-top:10px;">
+    <span style="font-size:13px;">Авто-раскладка:</span>
+    <div class="mode-btns">
+      <button onclick="autoLayout('row')">↔️ В ряд</button>
+      <button onclick="autoLayout('col')">↕️ В столбец</button>
+    </div>
+    <button onclick="alignSelf('originTL')">📍 Этот экран в (0,0)</button>
+  </div>
+  <div class="info" id="compInfo" style="margin-top:10px;"></div>
+</div>
+
+<!-- ЭКРАН -->
+<div class="panel">
+  <div class="row">
+    <label>Название экрана<input type="text" id="screenName" value="Screen 1" oninput="saveField('screenName',this.value);generate()"></label>
+  </div>
+  <div class="row" style="margin-top:12px;">
+    <span style="font-size:13px;">Способ ввода:</span>
+    <div class="mode-btns">
+      <button id="btn-cab"    onclick="setInput('cab')">По кабинетам</button>
+      <button id="btn-direct" onclick="setInput('direct')">Прямой ввод (px)</button>
+    </div>
+  </div>
+  <div id="input-cab">
+    <div class="row" style="margin-top:12px;">
+      <label>Ширина экрана (м)<input type="number" id="physW" value="3" step="0.1"></label>
+      <label>Высота экрана (м)<input type="number" id="physH" value="4" step="0.1"></label>
+    </div>
+    <div class="row" style="margin-top:12px;">
+      <label>Кабинет — размер (м)<input type="number" id="cabPhys" value="0.5" step="0.01"></label>
+      <label>Кабинет — ширина (px)<input type="number" id="cabPxW" value="192"></label>
+      <label>Кабинет — высота (px)<input type="number" id="cabPxH" value="192"></label>
+    </div>
+  </div>
+  <div id="input-direct" style="display:none;">
+    <div class="row" style="margin-top:12px;">
+      <label>Ширина экрана (px)<input type="number" id="dirW" value="520"></label>
+      <label>Высота экрана (px)<input type="number" id="dirH" value="430"></label>
+    </div>
+    <div class="row" style="margin-top:12px;">
+      <label>Физ. ширина (м)<input type="number" id="dirPhysW" value="0" step="0.1"></label>
+      <label>Физ. высота (м)<input type="number" id="dirPhysH" value="0" step="0.1"></label>
+      <label>Клетка шахматки (px)<input type="number" id="dirCell" value="96"></label>
+    </div>
+  </div>
+</div>
+
+<!-- ПРЕСЕТЫ ЦВЕТОВ -->
+<div class="panel">
+  <h4>🎨 Пресеты цветов</h4>
+  <div class="row" id="presetBtns"></div>
+  <div class="row" style="margin-top:12px;">
+    <button onclick="applyPresetToAll()" style="background:#8a2be2;">🌐 Применить текущие цвета ко ВСЕМ</button>
+    <button onclick="randomPreset()" style="background:#e67e22;">🎲 Случайный пресет</button>
+    <button onclick="saveCurrentAsPreset()" style="background:#16a085;">➕ Сохранить свой пресет</button>
+  </div>
+  <div class="row" style="margin-top:10px;">
+    <label class="checkbox">
+      <input type="checkbox" id="autoRotatePreset" checked>
+      🔄 Новый экран — следующий пресет
+    </label>
+  </div>
+</div>
+
+<!-- РЕЖИМ -->
+<div class="panel">
+  <div class="row">
+    <span style="font-size:13px;">Режим:</span>
+    <div class="mode-btns">
+      <button id="btn-checker" onclick="setMode('checker')">Шахматка</button>
+      <button id="btn-grad"    onclick="setMode('grad')">Градиент</button>
+    </div>
+  </div>
+  <div class="row modeopt" id="opt-checker" style="margin-top:12px;">
+    <label>Цвет 1<input type="color" id="col1" value="#ffffff"></label>
+    <label>Цвет 2<input type="color" id="col2" value="#000000"></label>
+  </div>
+  <div class="row modeopt" id="opt-grad" style="margin-top:12px; display:none;">
+    <label>Направление
+      <select id="gradDir">
+        <option value="h">Горизонтальный</option>
+        <option value="v">Вертикальный</option>
+        <option value="d">Диагональный</option>
+      </select>
+    </label>
+    <label>Цвет A<input type="color" id="gradA" value="#000000"></label>
+    <label>Цвет B<input type="color" id="gradB" value="#ffffff"></label>
+  </div>
+</div>
+
+<!-- ГЕОМЕТРИЯ -->
+<div class="panel">
+  <h4>Геометрия (крест + круг)</h4>
+  <div class="row">
+    <label class="checkbox"><input type="checkbox" id="showCross"> ✖️ Крест + круг</label>
+    <label>Цвет<input type="color" id="crossColor" value="#ff0000"></label>
+    <label>Толщина (px)<input type="number" id="crossLW" value="4" min="1"></label>
+    <label>Круг — % от экрана<input type="number" id="circlePct" value="50" min="5" max="100"></label>
+  </div>
+</div>
+
+<!-- ТЕКСТ -->
+<div class="panel">
+  <h4>Текст по центру</h4>
+  <div class="row">
+    <label class="checkbox"><input type="checkbox" id="txtName"> Название</label>
+    <label class="checkbox"><input type="checkbox" id="txtRes"> Разрешение (px)</label>
+    <label class="checkbox"><input type="checkbox" id="txtSize"> Физ. размер (м)</label>
+    <label>Цвет текста<input type="color" id="txtColor" value="#ffff00"></label>
+    <label>Размер текста (% от круга)<input type="number" id="txtSizePct" value="12" min="2" max="50"></label>
+  </div>
+  <div class="row" style="margin-top:10px;">
+    <label class="checkbox"><input type="checkbox" id="txtBg" checked> Подложка</label>
+    <label>Цвет подложки<input type="color" id="txtBgColor" value="#000000"></label>
+    <label>Прозрачность (%)<input type="number" id="txtBgAlpha" value="60" min="0" max="100"></label>
+  </div>
+</div>
+
+<!-- ЛОГОТИПЫ -->
+<div class="panel">
+  <h4>🖼️ Логотипы (для текущего экрана)</h4>
+  <div class="row" style="align-items:stretch;">
+    <div class="logo-block">
+      <h5>Логотип 1 — По центру (над текстом)</h5>
+      <div class="row" style="margin-bottom:10px;">
+        <div class="logo-preview-wrap" id="prev1"><span class="no-img">нет<br>лого</span></div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <button class="upload-btn" onclick="document.getElementById('file1').click()">📂 Загрузить</button>
+          <button class="upload-btn" onclick="clearLogo(1)">✖ Убрать</button>
+          <input type="file" id="file1" accept="image/*" style="display:none" onchange="loadLogo(1,this)">
+        </div>
+      </div>
+      <div class="row"><label class="checkbox"><input type="checkbox" id="logo1on" checked> Показать</label></div>
+      <div class="row" style="margin-top:8px;">
+        <label>Размер (% ширины)
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="range" id="logo1size" min="2" max="80" value="20" oninput="updLogoVal(1,'size')">
+            <span id="logo1sizeVal">20%</span>
+          </div>
+        </label>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <label>Прозрачность (%)
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="range" id="logo1alpha" min="0" max="100" value="100" oninput="updLogoVal(1,'alpha')">
+            <span id="logo1alphaVal">100%</span>
+          </div>
+        </label>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <label class="checkbox"><input type="checkbox" id="logo1bg"> Подложка</label>
+        <label>Цвет<input type="color" id="logo1bgColor" value="#000000"></label>
+        <label>Прозр.(%)<input type="number" id="logo1bgAlpha" value="50" min="0" max="100" style="width:60px;"></label>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <label>Отступ от текста (px)<input type="number" id="logo1gap" value="20" min="0"></label>
+      </div>
+    </div>
+
+    <div class="logo-block">
+      <h5>Логотип 2 — В углу</h5>
+      <div class="row" style="margin-bottom:10px;">
+        <div class="logo-preview-wrap" id="prev2"><span class="no-img">нет<br>лого</span></div>
+        <div style="display:flex;flex-direction:column;gap:6px;">
+          <button class="upload-btn" onclick="document.getElementById('file2').click()">📂 Загрузить</button>
+          <button class="upload-btn" onclick="clearLogo(2)">✖ Убрать</button>
+          <input type="file" id="file2" accept="image/*" style="display:none" onchange="loadLogo(2,this)">
+        </div>
+      </div>
+      <div class="row">
+        <label class="checkbox"><input type="checkbox" id="logo2on" checked> Показать</label>
+        <label>Угол
+          <select id="logo2corner">
+            <option value="tl">↖ Верх-лево</option>
+            <option value="tr">↗ Верх-право</option>
+            <option value="bl">↙ Низ-лево</option>
+            <option value="br" selected>↘ Низ-право</option>
+          </select>
+        </label>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <label>Размер (% ширины)
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="range" id="logo2size" min="2" max="50" value="12" oninput="updLogoVal(2,'size')">
+            <span id="logo2sizeVal">12%</span>
+          </div>
+        </label>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <label>Прозрачность (%)
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="range" id="logo2alpha" min="0" max="100" value="100" oninput="updLogoVal(2,'alpha')">
+            <span id="logo2alphaVal">100%</span>
+          </div>
+        </label>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <label>Отступ от края (px)<input type="number" id="logo2margin" value="20" min="0"></label>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <label class="checkbox"><input type="checkbox" id="logo2bg"> Подложка</label>
+        <label>Цвет<input type="color" id="logo2bgColor" value="#000000"></label>
+        <label>Прозр.(%)<input type="number" id="logo2bgAlpha" value="50" min="0" max="100" style="width:60px;"></label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- СОХРАНЕНИЕ -->
+<div class="panel">
+  <div class="row">
+    <label class="checkbox"><input type="checkbox" id="showLines"> Линии сетки (превью)</label>
+    <label class="checkbox"><input type="checkbox" id="showNums"> Номера (превью)</label>
+    <label class="checkbox"><input type="checkbox" id="showBorders" checked> Границы экранов (превью)</label>
+    <button onclick="generate()">Обновить</button>
+    <button onclick="savePNG()">💾 Сохранить общий PNG</button>
+  </div>
+  <div class="info" id="info" style="margin-top:12px;"></div>
+</div>
+
+<canvas id="preview"></canvas>
+
+<script>
+/* ═══════════════════════════════════════════════════════════════════════════
+   Каждый экран — объект со всеми настройками.
+   activeId — индекс редактируемого экрана.
+   Логотипы храним как dataURL (чтобы жили в объекте) + кэш Image.
+═══════════════════════════════════════════════════════════════════════════ */
+
+// Список ID полей формы, которые сохраняем в объект экрана
+const FIELD_IDS = [
+  'screenName','physW','physH','cabPhys','cabPxW','cabPxH',
+  'dirW','dirH','dirPhysW','dirPhysH','dirCell',
+  'col1','col2','gradDir','gradA','gradB',
+  'showCross','crossColor','crossLW','circlePct',
+  'txtName','txtRes','txtSize','txtColor','txtSizePct','txtBg','txtBgColor','txtBgAlpha',
+  'logo1on','logo1size','logo1alpha','logo1bg','logo1bgColor','logo1bgAlpha','logo1gap',
+  'logo2on','logo2corner','logo2size','logo2alpha','logo2margin','logo2bg','logo2bgColor','logo2bgAlpha'
+];
+
+function defaultScreen(name, x, y) {
+     return {
+    name, posX:x, posY:y,
+    visible:true,
+    inputMode:'cab', mode:'checker',
+    fields:{
+      screenName:name, physW:5, physH:2.5, cabPhys:0.5, cabPxW:192, cabPxH:192,
+      dirW:520, dirH:430, dirPhysW:0, dirPhysH:0, dirCell:96,
+      col1:'#ffffff', col2:'#000000', gradDir:'h', gradA:'#000000', gradB:'#ffffff',
+      showCross:false, crossColor:'#ff0000', crossLW:4, circlePct:50,
+      txtName:true, txtRes:true, txtSize:false, txtColor:'#ffff00', txtSizePct:12,
+      txtBg:true, txtBgColor:'#000000', txtBgAlpha:60,
+      logo1on:true, logo1size:20, logo1alpha:100, logo1bg:false, logo1bgColor:'#000000', logo1bgAlpha:50, logo1gap:20,
+      logo2on:true, logo2corner:'br', logo2size:12, logo2alpha:100, logo2margin:20, logo2bg:false, logo2bgColor:'#000000', logo2bgAlpha:50
+    },
+    logoData:{1:null,2:null},  // dataURL
+    _logoImg:{1:null,2:null}   // кэш Image (не сериализуем)
+  };
+}
+
+// ─── Пресеты цветов ──────────────────────────────────────────────────────────
+const DEFAULT_PRESETS = [
+  { name:'⚫⚪ Ч/Б',          col1:'#ffffff', col2:'#000000', gradA:'#000000', gradB:'#ffffff' },
+  { name:'⚫🟠 Ч/Оранж',     col1:'#ff7a00', col2:'#000000', gradA:'#000000', gradB:'#ff7a00' },
+  { name:'🟢🔴 Зел/Красн',   col1:'#00c853', col2:'#d50000', gradA:'#d50000', gradB:'#00c853' },
+  { name:'🔵🟣 Син/Фиол',    col1:'#2962ff', col2:'#aa00ff', gradA:'#2962ff', gradB:'#aa00ff' },
+  { name:'🩵🌸 Циан/Роз',    col1:'#00e5ff', col2:'#ff4081', gradA:'#00e5ff', gradB:'#ff4081' },
+  { name:'💛💜 Жёлт/Фиол',   col1:'#ffd600', col2:'#6a1b9a', gradA:'#6a1b9a', gradB:'#ffd600' }
+];
+
+// Загружаем пресеты из localStorage (или дефолтные)
+let COLOR_PRESETS;
+try {
+  const saved = JSON.parse(localStorage.getItem('ledPresets'));
+  COLOR_PRESETS = (Array.isArray(saved) && saved.length) ? saved : DEFAULT_PRESETS.slice();
+} catch (e) {
+  COLOR_PRESETS = DEFAULT_PRESETS.slice();
+}
+
+// Сохранение пресетов в localStorage
+function savePresetsToStorage() {
+  try {
+    localStorage.setItem('ledPresets', JSON.stringify(COLOR_PRESETS));
+  } catch (e) {
+    console.warn('Не удалось сохранить пресеты:', e);
+  }
+}
+let presetRotator = 0;   // счётчик для авто-ротации при создании экранов
+
+function applyPreset(p) {
+  const s = screens[activeId];
+  s.fields.col1  = p.col1;
+  s.fields.col2  = p.col2;
+  s.fields.gradA = p.gradA;
+  s.fields.gradB = p.gradB;
+  writeScreenToForm();
+  generate();
+}
+
+// 🌐 Применить текущие цвета активного экрана ко ВСЕМ экранам
+function applyPresetToAll() {
+  readFormToScreen();
+  const src = screens[activeId].fields;
+  const p = { col1:src.col1, col2:src.col2, gradA:src.gradA, gradB:src.gradB };
+  screens.forEach(s => {
+    Object.assign(s.fields, { col1:p.col1, col2:p.col2, gradA:p.gradA, gradB:p.gradB });
+  });
+  writeScreenToForm();
+  generate();
+}
+
+// 🎲 Случайный пресет к активному экрану
+function randomPreset() {
+  const p = COLOR_PRESETS[Math.floor(Math.random() * COLOR_PRESETS.length)];
+  applyPreset(p);
+}
+
+// ➕ Сохранить текущие цвета активного экрана как новый пресет
+function saveCurrentAsPreset() {
+  readFormToScreen();
+  const src = screens[activeId].fields;
+  let name = prompt('Название нового пресета:', 'Мой пресет ' + (COLOR_PRESETS.length + 1));
+  if (name === null) return;              // отмена
+  if (!name.trim()) name = 'Пресет ' + (COLOR_PRESETS.length + 1);
+    COLOR_PRESETS.push({
+    name: name,
+    col1: src.col1, col2: src.col2,
+    gradA: src.gradA, gradB: src.gradB
+  });
+  savePresetsToStorage();
+  renderPresetButtons();
+}
+
+let screens = [ defaultScreen('Screen 1', 0, 0) ];
+let activeId = 0;
+
+// Применяем первый пресет к стартовому экрану
+(function initFirstPreset(){
+  const p = COLOR_PRESETS[0];
+  Object.assign(screens[0].fields, { col1:p.col1, col2:p.col2, gradA:p.gradA, gradB:p.gradB });
+})();
+
+// ─── Работа с полями формы <-> объект ────────────────────────────────────────
+function getEl(id){ return document.getElementById(id); }
+
+function readFormToScreen() {
+  const s = screens[activeId];
+  FIELD_IDS.forEach(id=>{
+    const el = getEl(id);
+    if (!el) return;
+    s.fields[id] = (el.type==='checkbox') ? el.checked : el.value;
+  });
+  s.inputMode = inputMode;
+  s.mode = mode;
+  s.name = s.fields.screenName;
+}
+
+function writeScreenToForm() {
+  const s = screens[activeId];
+  FIELD_IDS.forEach(id=>{
+    const el = getEl(id);
+    if (!el) return;
+    if (el.type==='checkbox') el.checked = !!s.fields[id];
+    else el.value = s.fields[id];
+  });
+  getEl('posX').value = s.posX;
+  getEl('posY').value = s.posY;
+  // input/mode кнопки
+  inputMode = s.inputMode;
+  mode = s.mode;
+  applyInputButtons();
+  applyModeButtons();
+  // логотипы превью
+  [1,2].forEach(n=>{
+    const wrap = getEl('prev'+n);
+    if (s.logoData[n]) {
+      wrap.innerHTML='';
+      const img=document.createElement('img'); img.src=s.logoData[n]; wrap.appendChild(img);
+    } else {
+      wrap.innerHTML='<span class="no-img">нет<br>лого</span>';
+    }
+  });
+  // значения ползунков
+  ['1','2'].forEach(n=>{ updLogoVal(n,'size'); updLogoVal(n,'alpha'); });
+}
+
+// Сохранить одно поле (позиция / имя) сразу
+function saveField(id, val) {
+  const s = screens[activeId];
+  if (id==='posX') s.posX = parseInt(val)||0;
+  else if (id==='posY') s.posY = parseInt(val)||0;
+  else if (id==='screenName'){ s.fields.screenName=val; s.name=val; renderTabs(); }
+}
+
+// ─── Получить готовый Image для логотипа ─────────────────────────────────────
+function ensureLogoImg(s, n, cb) {
+  if (!s.logoData[n]) { s._logoImg[n]=null; cb&&cb(); return; }
+  if (s._logoImg[n] && s._logoImg[n].src===s.logoData[n]) { cb&&cb(); return; }
+  const img=new Image();
+  img.onload=()=>{ s._logoImg[n]=img; cb&&cb(); };
+  img.src=s.logoData[n];
+}
+
+// ─── Загрузка / очистка лого ─────────────────────────────────────────────────
+function loadLogo(n, input) {
+  const file=input.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const s=screens[activeId];
+    s.logoData[n]=e.target.result;
+    s._logoImg[n]=null;
+    const wrap=getEl('prev'+n); wrap.innerHTML='';
+    const img=document.createElement('img'); img.src=e.target.result; wrap.appendChild(img);
+    ensureLogoImg(s,n,generate);
+  };
+  reader.readAsDataURL(file);
+}
+function clearLogo(n) {
+  const s=screens[activeId];
+  s.logoData[n]=null; s._logoImg[n]=null;
+  getEl('prev'+n).innerHTML='<span class="no-img">нет<br>лого</span>';
+  getEl('file'+n).value='';
+  generate();
+}
+function updLogoVal(n,type){
+  getEl(`logo${n}${type}Val`).textContent=getEl(`logo${n}${type}`).value+'%';
+}
+
+function renderPresetButtons() {
+  const box = getEl('presetBtns');
+  box.innerHTML = '';
+  COLOR_PRESETS.forEach((p, i) => {
+    const btn = document.createElement('button');
+    btn.textContent = p.name;
+    btn.style.background = '#444';
+    btn.style.borderBottom = `4px solid ${p.col1}`;
+    btn.style.boxShadow = `inset 0 -8px 0 -4px ${p.col2}`;
+    btn.title = 'ЛКМ — применить пресет • ПКМ — удалить пресет';
+    btn.onclick = () => applyPreset(p);
+    // Удаление по правому клику
+    btn.oncontextmenu = (e) => {
+      e.preventDefault();
+      if (confirm('Удалить пресет «' + p.name + '»?')) {
+        COLOR_PRESETS.splice(i, 1);
+        savePresetsToStorage();
+        renderPresetButtons();
+      }
+    };
+    box.appendChild(btn);
+  });
+
+  // Кнопка сброса к заводским пресетам
+  const reset = document.createElement('button');
+  reset.textContent = '↩️ Сброс пресетов';
+  reset.style.background = '#c0392b';
+  reset.title = 'Вернуть заводские пресеты (удалит все свои)';
+  reset.onclick = () => {
+    if (confirm('Сбросить все пресеты к заводским? Свои пресеты будут удалены.')) {
+      COLOR_PRESETS = DEFAULT_PRESETS.slice();
+      savePresetsToStorage();
+      renderPresetButtons();
+    }
+  };
+  box.appendChild(reset);
+}
+
+// ─── Табы экранов ────────────────────────────────────────────────────────────
+function renderTabs() {
+  const box = getEl('screenTabs');
+  box.innerHTML = '';
+  screens.forEach((s, i) => {
+    const tab = document.createElement('div');
+    tab.className = 'screen-tab' + (i === activeId ? ' active' : '');
+    tab.onclick = () => switchScreen(i);
+
+    const eye = document.createElement('span');
+    eye.textContent = s.visible ? '👁️' : '🚫';
+    eye.title = s.visible ? 'Скрыть из композиции' : 'Показать';
+    eye.style.cursor = 'pointer';
+    eye.onclick = (e) => {
+      e.stopPropagation();
+      s.visible = !s.visible;
+      renderTabs();
+      generate();
+    };
+    tab.appendChild(eye);
+
+    const label = document.createElement('span');
+    label.textContent = s.name || ('Screen ' + (i + 1));
+    if (!s.visible) label.style.opacity = '0.4';
+    tab.appendChild(label);
+
+    if (screens.length > 1) {
+      const del = document.createElement('span');
+      del.className = 'del';
+      del.textContent = '✖';
+      del.title = 'Удалить экран';
+      del.onclick = (e) => { e.stopPropagation(); deleteScreen(i); };
+      tab.appendChild(del);
+    }
+    box.appendChild(tab);
+  });
+}
+
+function switchScreen(i) {
+  readFormToScreen();      // сохраняем текущий
+  activeId = i;
+  writeScreenToForm();     // загружаем новый
+  renderTabs();
+  generate();
+}
+
+function addScreen() {
+  readFormToScreen();
+  // Ставим новый экран справа от самого правого
+  let maxRight = 0;
+  screens.forEach(s => {
+    const d = getScreenSize(s);
+    maxRight = Math.max(maxRight, s.posX + d.w);
+  });
+  const s = defaultScreen('Screen ' + (screens.length + 1), maxRight, 0);
+  // Авто-ротация пресета
+  if (getEl('autoRotatePreset').checked) {
+    presetRotator = (presetRotator + 1) % COLOR_PRESETS.length;
+    const p = COLOR_PRESETS[presetRotator];
+    Object.assign(s.fields, { col1:p.col1, col2:p.col2, gradA:p.gradA, gradB:p.gradB });
+  }
+  screens.push(s);
+  activeId = screens.length - 1;
+  writeScreenToForm();
+  renderTabs();
+  generate();
+}
+
+function duplicateScreen() {
+  readFormToScreen();
+  const src = screens[activeId];
+  // Глубокая копия (кроме кэша Image)
+  const copy = defaultScreen(src.name + ' copy', src.posX, src.posY);
+  copy.inputMode = src.inputMode;
+  copy.mode = src.mode;
+  copy.fields = JSON.parse(JSON.stringify(src.fields));
+  copy.fields.screenName = copy.name;
+  copy.logoData = { 1: src.logoData[1], 2: src.logoData[2] };
+  copy._logoImg = { 1: null, 2: null };
+  // Сдвигаем вправо, чтобы не накладывался
+  const d = getScreenSize(src);
+  copy.posX = src.posX + d.w;
+  screens.push(copy);
+  activeId = screens.length - 1;
+  writeScreenToForm();
+  renderTabs();
+  generate();
+}
+
+function deleteScreen(i) {
+  if (screens.length <= 1) return;
+  if (!confirm('Удалить "' + (screens[i].name) + '"?')) return;
+  screens.splice(i, 1);
+  if (activeId >= screens.length) activeId = screens.length - 1;
+  else if (activeId > i) activeId--;
+  writeScreenToForm();
+  renderTabs();
+  generate();
+}
+
+// ─── Кнопки режимов ввода / отрисовки ────────────────────────────────────────
+let inputMode = 'direct';
+let mode = 'checker';
+
+function applyInputButtons() {
+  getEl('btn-cab').classList.toggle('active', inputMode === 'cab');
+  getEl('btn-direct').classList.toggle('active', inputMode === 'direct');
+  getEl('input-cab').style.display    = inputMode === 'cab'    ? 'block' : 'none';
+  getEl('input-direct').style.display = inputMode === 'direct' ? 'block' : 'none';
+}
+function applyModeButtons() {
+  getEl('btn-checker').classList.toggle('active', mode === 'checker');
+  getEl('btn-grad').classList.toggle('active', mode === 'grad');
+  document.querySelectorAll('.modeopt').forEach(o => o.style.display = 'none');
+  getEl('opt-' + mode).style.display = 'flex';
+}
+function setInput(m) {
+  inputMode = m;
+  screens[activeId].inputMode = m;
+  applyInputButtons();
+  generate();
+}
+function setMode(m) {
+  mode = m;
+  screens[activeId].mode = m;
+  applyModeButtons();
+  generate();
+}
+
+// ─── Размеры одного экрана (по его настройкам) ──────────────────────────────
+function getScreenSize(s) {
+  const f = s.fields;
+  if (s.inputMode === 'cab') {
+    const physW = parseFloat(f.physW), physH = parseFloat(f.physH);
+    const cabPhys = parseFloat(f.cabPhys);
+    const cabPxW = parseInt(f.cabPxW), cabPxH = parseInt(f.cabPxH);
+    const cx = Math.round(physW / cabPhys);
+    const cy = Math.round(physH / cabPhys);
+    return { w: cx * cabPxW, h: cy * cabPxH, cabsX: cx, cabsY: cy, cabPxW, cabPxH, physW, physH };
+  } else {
+    const w = parseInt(f.dirW), h = parseInt(f.dirH);
+    const cell = parseInt(f.dirCell) || 96;
+    return {
+      w, h,
+      cabsX: Math.ceil(w / cell), cabsY: Math.ceil(h / cell),
+      cabPxW: cell, cabPxH: cell,
+      physW: parseFloat(f.dirPhysW) || 0, physH: parseFloat(f.dirPhysH) || 0
+    };
+  }
+}
+
+// ─── Авто-раскладка всех экранов ─────────────────────────────────────────────
+function autoLayout(dir) {
+  readFormToScreen();
+  let cursor = 0;
+  screens.forEach(s => {
+    const d = getScreenSize(s);
+    if (dir === 'row') { s.posX = cursor; s.posY = 0; cursor += d.w; }
+    else               { s.posY = cursor; s.posX = 0; cursor += d.h; }
+  });
+  writeScreenToForm();
+  generate();
+}
+
+function alignSelf(mode) {
+  readFormToScreen();
+  const s = screens[activeId];
+  if (mode === 'originTL') { s.posX = 0; s.posY = 0; }
+  writeScreenToForm();
+  generate();
+}
+
+// ─── Общие границы композиции ───────────────────────────────────────────────
+function getCompBounds() {
+  const vis = screens.filter(s => s.visible);
+  if (vis.length === 0) return { w: 0, h: 0, offX: 0, offY: 0 };
+  let minX = Infinity, minY = Infinity, maxX = 0, maxY = 0;
+  vis.forEach(s => {
+    const d = getScreenSize(s);
+    minX = Math.min(minX, s.posX);
+    minY = Math.min(minY, s.posY);
+    maxX = Math.max(maxX, s.posX + d.w);
+    maxY = Math.max(maxY, s.posY + d.h);
+  });
+  return { w: maxX - minX, h: maxY - minY, offX: minX, offY: minY };
+}
+
+// ─── Утилиты рисования ──────────────────────────────────────────────────────
+function hexToRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function roundRect(ctx, x, y, w, h, r) {
+  r = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ОТРИСОВКА ОДНОГО ЭКРАНА в локальных координатах (0..w, 0..h)
+   ctx должен быть уже смещён (translate) на позицию экрана.
+═══════════════════════════════════════════════════════════════════════════ */
+
+function drawScreenContent(ctx, s, d) {
+  const f = s.fields;
+  const W = d.w, H = d.h;
+
+  // Фон: шахматка / градиент
+  if (s.mode === 'checker') {
+    for (let y = 0; y < d.cabsY; y++)
+      for (let x = 0; x < d.cabsX; x++) {
+        ctx.fillStyle = ((x + y) % 2 === 0) ? f.col1 : f.col2;
+        ctx.fillRect(x * d.cabPxW, y * d.cabPxH, d.cabPxW, d.cabPxH);
+      }
+  } else {
+    let g;
+    if      (f.gradDir === 'h') g = ctx.createLinearGradient(0, 0, W, 0);
+    else if (f.gradDir === 'v') g = ctx.createLinearGradient(0, 0, 0, H);
+    else                        g = ctx.createLinearGradient(0, 0, W, H);
+    g.addColorStop(0, f.gradA);
+    g.addColorStop(1, f.gradB);
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  // Крест + круг
+  if (f.showCross === true || f.showCross === 'true' || f.showCross === 'on') {
+    ctx.strokeStyle = f.crossColor;
+    ctx.lineWidth = parseInt(f.crossLW);
+    ctx.beginPath();
+    ctx.moveTo(0, 0); ctx.lineTo(W, H);
+    ctx.moveTo(W, 0); ctx.lineTo(0, H);
+    ctx.stroke();
+    const pct = parseFloat(f.circlePct) / 100;
+    const r = (Math.min(W, H) * pct) / 2;
+    ctx.beginPath();
+    ctx.arc(W / 2, H / 2, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Центральный блок (лого1 + текст)
+  drawCenterBlock(ctx, s, d);
+
+  // Лого 2 в углу
+  drawLogo2(ctx, s, d);
+}
+
+// Приводим значение чекбокса (могло сохраниться как строка) к boolean
+function b(v) { return v === true || v === 'true' || v === 'on'; }
+
+// ─── Центральный блок: лого1 сверху + текст снизу (или по центру) ────────────
+function drawCenterBlock(ctx, s, d) {
+  const f = s.fields;
+  const W = d.w, H = d.h;
+
+  const showName = b(f.txtName);
+  const showRes  = b(f.txtRes);
+  const showSize = b(f.txtSize);
+
+  const lines = [];
+  if (showName) lines.push(f.screenName);
+  if (showRes)  lines.push(`${W} × ${H} px`);
+  if (showSize && d.physW && d.physH) lines.push(`${d.physW} × ${d.physH} м`);
+  const hasText = lines.length > 0;
+
+  const pct = parseFloat(f.circlePct) / 100;
+  const cd = Math.min(W, H) * pct;
+  const fontSize = cd * (parseFloat(f.txtSizePct) / 100);
+  const lineH = fontSize * 1.3;
+  const textBlockH = hasText ? lines.length * lineH : 0;
+
+  const logoImg = s._logoImg[1];
+  const logo1visible = !!(logoImg && b(f.logo1on));
+  const sizePct1 = parseFloat(f.logo1size) / 100;
+  const logo1W = W * sizePct1;
+  const logo1H = logo1visible ? logo1W * (logoImg.naturalHeight / logoImg.naturalWidth) : 0;
+  const gap = (logo1visible && hasText) ? (parseInt(f.logo1gap) || 0) : 0;
+
+  const totalBlockH = logo1H + gap + textBlockH;
+  const blockTop = H / 2 - totalBlockH / 2;
+
+  // --- Лого 1 ---
+  if (logo1visible) {
+    const lx = W / 2 - logo1W / 2;
+    const ly = blockTop;
+    if (b(f.logo1bg)) {
+      const pad = logo1W * 0.12;
+      const [r, g, bv] = hexToRgb(f.logo1bgColor);
+      const a = parseFloat(f.logo1bgAlpha) / 100;
+      ctx.fillStyle = `rgba(${r},${g},${bv},${a})`;
+      roundRect(ctx, lx - pad, ly - pad, logo1W + pad * 2, logo1H + pad * 2, pad * 0.8);
+      ctx.fill();
+    }
+    ctx.globalAlpha = parseFloat(f.logo1alpha) / 100;
+    ctx.drawImage(logoImg, lx, ly, logo1W, logo1H);
+    ctx.globalAlpha = 1;
+  }
+
+  // --- Текст ---
+  if (!hasText) return;
+  const textTopY = blockTop + logo1H + gap + lineH / 2;
+  ctx.font = `bold ${Math.round(fontSize)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  if (b(f.txtBg)) {
+    let maxW = 0;
+    lines.forEach(l => { maxW = Math.max(maxW, ctx.measureText(l).width); });
+    const padX = fontSize * 0.6, padY = fontSize * 0.4;
+    const boxW = maxW + padX * 2;
+    const boxH = lines.length * lineH + padY * 2 - (lineH - fontSize);
+    const boxX = W / 2 - boxW / 2;
+    const boxY = textTopY - lineH / 2 - padY + (lineH - fontSize) / 2;
+    const [r, g, bv] = hexToRgb(f.txtBgColor);
+    const a = parseFloat(f.txtBgAlpha) / 100;
+    ctx.fillStyle = `rgba(${r},${g},${bv},${a})`;
+    roundRect(ctx, boxX, boxY, boxW, boxH, fontSize * 0.3);
+    ctx.fill();
+  }
+
+  ctx.fillStyle = f.txtColor;
+  lines.forEach((line, i) => {
+    ctx.fillText(line, W / 2, textTopY + i * lineH);
+  });
+}
+
+// ─── Лого 2 в углу экрана ────────────────────────────────────────────────────
+function drawLogo2(ctx, s, d) {
+  const f = s.fields;
+  const img = s._logoImg[2];
+  if (!img || !b(f.logo2on)) return;
+  const W = d.w, H = d.h;
+
+  const sizePct = parseFloat(f.logo2size) / 100;
+  const logoW = W * sizePct;
+  const logoH = logoW * (img.naturalHeight / img.naturalWidth);
+  const margin = parseInt(f.logo2margin) || 0;
+  const pad = logoW * 0.12;
+
+  let x, y;
+  const c = f.logo2corner;
+  if      (c === 'tl') { x = margin;             y = margin; }
+  else if (c === 'tr') { x = W - logoW - margin; y = margin; }
+  else if (c === 'bl') { x = margin;             y = H - logoH - margin; }
+  else                 { x = W - logoW - margin; y = H - logoH - margin; }
+
+  if (b(f.logo2bg)) {
+    const [r, g, bv] = hexToRgb(f.logo2bgColor);
+    const a = parseFloat(f.logo2bgAlpha) / 100;
+    ctx.fillStyle = `rgba(${r},${g},${bv},${a})`;
+    roundRect(ctx, x - pad, y - pad, logoW + pad * 2, logoH + pad * 2, pad * 0.8);
+    ctx.fill();
+  }
+  ctx.globalAlpha = parseFloat(f.logo2alpha) / 100;
+  ctx.drawImage(img, x, y, logoW, logoH);
+  ctx.globalAlpha = 1;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ГЛАВНАЯ ОТРИСОВКА КОМПОЗИЦИИ
+═══════════════════════════════════════════════════════════════════════════ */
+
+function drawComposition(ctx, comp, withOverlay) {
+  // Чёрный фон общей композиции
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, comp.w, comp.h);
+
+  // Смещаем всё так, чтобы видимые экраны начинались с (0,0)
+  ctx.save();
+  ctx.translate(-comp.offX, -comp.offY);
+
+  screens.forEach((s, idx) => {
+    if (!s.visible) return;        // скрытые не рисуем
+    const d = getScreenSize(s);
+    ctx.save();
+    ctx.translate(s.posX, s.posY);
+    // обрезаем по границам экрана, чтобы ничего не вылезло
+    ctx.beginPath();
+    ctx.rect(0, 0, d.w, d.h);
+    ctx.clip();
+    drawScreenContent(ctx, s, d);
+    ctx.restore();
+
+    // Оверлей (только превью)
+    if (withOverlay) {
+      // Линии сетки
+      if (getEl('showLines').checked) {
+        ctx.save();
+        ctx.translate(s.posX, s.posY);
+        ctx.strokeStyle = 'rgba(120,120,120,0.6)';
+        ctx.lineWidth = Math.max(1, Math.round(d.cabPxW / 96));
+        for (let x = 0; x <= d.cabsX; x++) {
+          ctx.beginPath(); ctx.moveTo(x * d.cabPxW, 0); ctx.lineTo(x * d.cabPxW, d.h); ctx.stroke();
+        }
+        for (let y = 0; y <= d.cabsY; y++) {
+          ctx.beginPath(); ctx.moveTo(0, y * d.cabPxH); ctx.lineTo(d.w, y * d.cabPxH); ctx.stroke();
+        }
+        ctx.restore();
+      }
+      // Номера кабинетов
+      if (getEl('showNums').checked) {
+        ctx.save();
+        ctx.translate(s.posX, s.posY);
+        ctx.fillStyle = '#ff8800';
+        ctx.font = `${Math.round(d.cabPxH / 6)}px sans-serif`;
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        let num = 1;
+        for (let y = 0; y < d.cabsY; y++)
+          for (let x = 0; x < d.cabsX; x++) {
+            ctx.fillText(num, x * d.cabPxW + d.cabPxW / 2, y * d.cabPxH + d.cabPxH / 2);
+            num++;
+          }
+        ctx.restore();
+      }
+      // Границы экрана + подпись
+      if (getEl('showBorders').checked) {
+        ctx.save();
+        const active = (idx === activeId);
+        ctx.strokeStyle = active ? '#4ec9b0' : '#00a0ff';
+        ctx.lineWidth = active ? 4 : 2;
+        ctx.strokeRect(s.posX, s.posY, d.w, d.h);
+        // подпись
+        ctx.fillStyle = active ? '#4ec9b0' : '#00a0ff';
+        const lbl = `${s.name}  (${d.w}×${d.h})`;
+        ctx.font = 'bold 22px sans-serif';
+        ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+        const tw = ctx.measureText(lbl).width;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(s.posX + 4, s.posY + 4, tw + 12, 30);
+        ctx.fillStyle = active ? '#4ec9b0' : '#00a0ff';
+        ctx.fillText(lbl, s.posX + 10, s.posY + 8);
+        ctx.restore();
+      }
+    }
+  });
+
+  ctx.restore();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GENERATE — превью + инфо
+═══════════════════════════════════════════════════════════════════════════ */
+
+function generate() {
+  readFormToScreen();
+
+  // Убедимся, что все логотипы всех экранов загружены как Image
+  let pending = 0, done = false;
+  const finish = () => { if (done && pending === 0) renderPreview(); };
+  screens.forEach(s => {
+    [1, 2].forEach(n => {
+      if (s.logoData[n] && !(s._logoImg[n] && s._logoImg[n].src === s.logoData[n])) {
+        pending++;
+        ensureLogoImg(s, n, () => { pending--; finish(); });
+      }
+    });
+  });
+  done = true;
+  if (pending === 0) renderPreview();
+}
+
+function renderPreview() {
+  const comp = getCompBounds();
+  if (comp.w === 0 || comp.h === 0) return;
+
+  // Инфо
+    const visCount = screens.filter(s => s.visible).length;
+  getEl('info').innerHTML =
+    `Экранов: <b>${screens.length}</b> (видимых: <b>${visCount}</b>) &nbsp;|&nbsp; Общий PNG: <b>${comp.w} × ${comp.h} px</b>`;
+
+  let ci = 'Композиция: ';
+  ci += screens.map(s => {
+    const d = getScreenSize(s);
+    return `<b>${s.name}</b> ${d.w}×${d.h} @ (${s.posX},${s.posY})`;
+  }).join(' &nbsp;•&nbsp; ');
+  getEl('compInfo').innerHTML = ci;
+
+  const canvas = getEl('preview');
+  canvas.width = comp.w;
+  canvas.height = comp.h;
+  const maxDisp = 1000;
+  const scale = Math.min(1, maxDisp / comp.w, maxDisp / comp.h);
+  canvas.style.width = (comp.w * scale) + 'px';
+  canvas.style.height = (comp.h * scale) + 'px';
+
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, comp.w, comp.h);
+  drawComposition(ctx, comp, true);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   СОХРАНЕНИЕ ОБЩЕГО PNG (без оверлея)
+═══════════════════════════════════════════════════════════════════════════ */
+
+function savePNG() {
+  readFormToScreen();
+  const comp = getCompBounds();
+  if (comp.w === 0 || comp.h === 0) { alert('Нет экранов!'); return; }
+
+  const tmp = document.createElement('canvas');
+  tmp.width = comp.w;
+  tmp.height = comp.h;
+  const ctx = tmp.getContext('2d');
+  drawComposition(ctx, comp, false);
+
+  const link = document.createElement('a');
+  link.download = `composition_${comp.w}x${comp.h}.png`;
+  link.href = tmp.toDataURL('image/png');
+  link.click();
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Живое обновление формы + перетаскивание экранов мышью по превью
+═══════════════════════════════════════════════════════════════════════════ */
+
+document.querySelectorAll('input, select').forEach(el => {
+  el.addEventListener('input', () => { readFormToScreen(); generate(); });
+  el.addEventListener('change', () => { readFormToScreen(); generate(); });
+});
+
+// Перетаскивание экрана мышью на превью
+(function enableDrag() {
+  const canvas = getEl('preview');
+  let dragging = false, dragIdx = -1, offX = 0, offY = 0;
+
+  function getScale() {
+    const comp = getCompBounds();
+    if (comp.w === 0) return 1;
+    // отношение реальных пикселей канваса к отображаемым
+    return canvas.width / canvas.getBoundingClientRect().width;
+  }
+
+  // Перевод координат мыши -> координаты композиции (в пикселях PNG)
+    function toComp(e) {
+    const rect = canvas.getBoundingClientRect();
+    const scale = getScale();
+    const comp = getCompBounds();
+    const x = (e.clientX - rect.left) * scale + comp.offX;
+    const y = (e.clientY - rect.top) * scale + comp.offY;
+    return { x, y };
+  }
+
+  // Найти экран под курсором (сверху вниз — последний нарисованный сверху)
+    function hitTest(x, y) {
+    for (let i = screens.length - 1; i >= 0; i--) {
+      const s = screens[i];
+      if (!s.visible) continue;
+      const d = getScreenSize(s);
+      if (x >= s.posX && x <= s.posX + d.w &&
+          y >= s.posY && y <= s.posY + d.h) {
+        return i;
+      }
+    }
+    return -1;
+  }
+
+  canvas.addEventListener('mousedown', (e) => {
+    const p = toComp(e);
+    const idx = hitTest(p.x, p.y);
+    if (idx === -1) return;
+    dragging = true;
+    dragIdx = idx;
+    offX = p.x - screens[idx].posX;
+    offY = p.y - screens[idx].posY;
+    // Сделать этот экран активным
+    if (idx !== activeId) {
+      readFormToScreen();
+      activeId = idx;
+      writeScreenToForm();
+      renderTabs();
+    }
+    canvas.style.cursor = 'grabbing';
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const p = toComp(e);
+    let nx = Math.round(p.x - offX);
+    let ny = Math.round(p.y - offY);
+
+    // Привязка к сетке при зажатом Shift (шаг 10px)
+    if (e.shiftKey) {
+      nx = Math.round(nx / 10) * 10;
+      ny = Math.round(ny / 10) * 10;
+    }
+
+    // Магнитное прилипание к краям соседних экранов (в пределах 12px)
+    const SNAP = 40;
+    const cur = screens[dragIdx];
+    const dCur = getScreenSize(cur);
+    screens.forEach((s, i) => {
+      if (i === dragIdx) return;
+      const d = getScreenSize(s);
+      // по X: правый край соседа -> левый край текущего, и наоборот
+      if (Math.abs(nx - (s.posX + d.w)) < SNAP) nx = s.posX + d.w;
+      if (Math.abs(nx - s.posX) < SNAP)         nx = s.posX;
+      if (Math.abs((nx + dCur.w) - s.posX) < SNAP) nx = s.posX - dCur.w;
+      if (Math.abs((nx + dCur.w) - (s.posX + d.w)) < SNAP) nx = s.posX + d.w - dCur.w;
+      // по Y
+      if (Math.abs(ny - (s.posY + d.h)) < SNAP) ny = s.posY + d.h;
+      if (Math.abs(ny - s.posY) < SNAP)         ny = s.posY;
+      if (Math.abs((ny + dCur.h) - s.posY) < SNAP) ny = s.posY - dCur.h;
+      if (Math.abs((ny + dCur.h) - (s.posY + d.h)) < SNAP) ny = s.posY + d.h - dCur.h;
+    });
+
+        // Прилипание к нулю (край композиции)
+    if (Math.abs(nx) < SNAP) nx = 0;
+    if (Math.abs(ny) < SNAP) ny = 0;
+    // Не даём уходить в отрицательные координаты
+    if (nx < 0) nx = 0;
+    if (ny < 0) ny = 0;
+
+    cur.posX = nx;
+    cur.posY = ny;
+    getEl('posX').value = nx;
+    getEl('posY').value = ny;
+    generate();
+  });
+
+  window.addEventListener('mouseup', () => {
+    if (dragging) {
+      dragging = false;
+      dragIdx = -1;
+      canvas.style.cursor = 'grab';
+      generate();
+    }
+  });
+
+  // Курсор-подсказка при наведении
+  canvas.addEventListener('mousemove', (e) => {
+    if (dragging) return;
+    const p = toComp(e);
+    canvas.style.cursor = (hitTest(p.x, p.y) !== -1) ? 'grab' : 'default';
+  });
+})();
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   СТАРТ
+═══════════════════════════════════════════════════════════════════════════ */
+
+renderPresetButtons();
+writeScreenToForm();
+renderTabs();
+generate();
+</script>
+</body>
+</html>
