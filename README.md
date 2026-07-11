@@ -6,7 +6,7 @@
 </p>
 
 <p align="center">
-  <a href="https://твой-логин.github.io/led-screen-generator/">
+  <a href="https://fender4266-ops.github.io/led-screen-generator/">
     <img src="https://img.shields.io/badge/🚀_Открыть_онлайн-2962ff?style=for-the-badge" alt="Open Online">
   </a>
   <img src="https://img.shields.io/badge/HTML-orange?style=for-the-badge&logo=html5&logoColor=white">
