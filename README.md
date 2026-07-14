@@ -22,7 +22,6 @@
 
 👉 **[Открыть LED Screen Generator](https://fender4266-ops.github.io/led-screen-generator/)**
 
-> Замени `твой-логин` на свой логин GitHub после публикации.
 
 ---
 
