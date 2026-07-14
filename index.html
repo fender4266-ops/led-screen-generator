@@ -39,6 +39,13 @@
   .screen-tab.active .del { color:#900; }
   .tab-add { background:#007acc; color:#fff; padding:6px 12px; border-radius:5px; }
   .pos-panel { background:#20303a; border:1px solid #2a5060; }
+  /* Сворачиваемые секции */
+  .panel > h4.collapsible, .panel > .panel-head {
+    cursor:pointer; user-select:none; display:flex; align-items:center; gap:8px;
+  }
+  .collapse-arrow { transition:transform 0.2s; font-size:12px; color:#888; }
+  .panel.collapsed .collapse-body { display:none; }
+  .panel.collapsed .collapse-arrow { transform:rotate(-90deg); }
 </style>
 </head>
 <body>
@@ -74,6 +81,7 @@
 
 <!-- ЭКРАН -->
 <div class="panel">
+  <h4>📏 Размеры экрана</h4>
   <div class="row">
     <label>Название экрана<input type="text" id="screenName" value="Screen 1" oninput="saveField('screenName',this.value);generate()"></label>
   </div>
@@ -127,6 +135,7 @@
 
 <!-- РЕЖИМ -->
 <div class="panel">
+  <h4>🖌️ Режим отрисовки</h4>
   <div class="row">
     <span style="font-size:13px;">Режим:</span>
     <div class="mode-btns">
@@ -170,7 +179,7 @@
     <label class="checkbox"><input type="checkbox" id="txtRes"> Разрешение (px)</label>
     <label class="checkbox"><input type="checkbox" id="txtSize"> Физ. размер (м)</label>
     <label>Цвет текста<input type="color" id="txtColor" value="#ffff00"></label>
-    <label>Размер текста (% от круга)<input type="number" id="txtSizePct" value="12" min="2" max="50"></label>
+    <label>Размер текста (% заполнения круга)<input type="number" id="txtSizePct" value="70" min="2" max="100"></label>
   </div>
   <div class="row" style="margin-top:10px;">
     <label class="checkbox"><input type="checkbox" id="txtBg" checked> Подложка</label>
@@ -217,6 +226,16 @@
       </div>
       <div class="row" style="margin-top:8px;">
         <label>Отступ от текста (px)<input type="number" id="logo1gap" value="20" min="0"></label>
+      </div>
+            <div class="row" style="margin-top:8px;">
+        <label class="checkbox"><input type="checkbox" id="logo1manual"> 📍 Ручное позиционирование (X/Y)</label>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <label class="checkbox"><input type="checkbox" id="logo1moveText"> 🔗 Двигать текст вместе с лого</label>
+      </div>
+      <div class="row" style="margin-top:8px;">
+        <label>Смещение X (px)<input type="number" id="logo1x" value="0"></label>
+        <label>Смещение Y (px)<input type="number" id="logo1y" value="0"></label>
       </div>
     </div>
 
@@ -272,11 +291,15 @@
 <!-- СОХРАНЕНИЕ -->
 <div class="panel">
   <div class="row">
-    <label class="checkbox"><input type="checkbox" id="showLines"> Линии сетки (превью)</label>
-    <label class="checkbox"><input type="checkbox" id="showNums"> Номера (превью)</label>
-    <label class="checkbox"><input type="checkbox" id="showBorders" checked> Границы экранов (превью)</label>
+    <span style="font-size:13px;color:#f0a500;">Оверлеи (видны в превью и в PNG):</span>
+    <label class="checkbox"><input type="checkbox" id="showLines"> Линии сетки</label>
+    <label class="checkbox"><input type="checkbox" id="showNums"> Номера</label>
+    <label class="checkbox"><input type="checkbox" id="showBorders" checked> Границы экранов</label>
+  </div>
+  <div class="row" style="margin-top:12px;">
     <button onclick="generate()">Обновить</button>
     <button onclick="savePNG()">💾 Сохранить общий PNG</button>
+    <button onclick="saveAllPNG()" style="background:#8a2be2;">🗂️ Сохранить каждый экран отдельно</button>
   </div>
   <div class="info" id="info" style="margin-top:12px;"></div>
 </div>
@@ -297,7 +320,7 @@ const FIELD_IDS = [
   'col1','col2','gradDir','gradA','gradB',
   'showCross','crossColor','crossLW','circlePct',
   'txtName','txtRes','txtSize','txtColor','txtSizePct','txtBg','txtBgColor','txtBgAlpha',
-  'logo1on','logo1size','logo1alpha','logo1bg','logo1bgColor','logo1bgAlpha','logo1gap',
+  'logo1on','logo1size','logo1alpha','logo1bg','logo1bgColor','logo1bgAlpha','logo1gap','logo1manual','logo1moveText','logo1x','logo1y',
   'logo2on','logo2corner','logo2size','logo2alpha','logo2margin','logo2bg','logo2bgColor','logo2bgAlpha'
 ];
 
@@ -313,7 +336,7 @@ function defaultScreen(name, x, y) {
       showCross:false, crossColor:'#ff0000', crossLW:4, circlePct:50,
       txtName:true, txtRes:true, txtSize:false, txtColor:'#ffff00', txtSizePct:12,
       txtBg:true, txtBgColor:'#000000', txtBgAlpha:60,
-      logo1on:true, logo1size:20, logo1alpha:100, logo1bg:false, logo1bgColor:'#000000', logo1bgAlpha:50, logo1gap:20,
+           logo1on:true, logo1size:20, logo1alpha:100, logo1bg:false, logo1bgColor:'#000000', logo1bgAlpha:50, logo1gap:20, logo1manual:false, logo1moveText:false, logo1x:0, logo1y:0,
       logo2on:true, logo2corner:'br', logo2size:12, logo2alpha:100, logo2margin:20, logo2bg:false, logo2bgColor:'#000000', logo2bgAlpha:50
     },
     logoData:{1:null,2:null},  // dataURL
@@ -392,6 +415,57 @@ function saveCurrentAsPreset() {
   });
   savePresetsToStorage();
   renderPresetButtons();
+}
+
+// ─── Автосохранение состояния сессии ────────────────────────────────────────
+const SESSION_KEY = 'ledSession';
+
+function saveSession() {
+  try {
+    readFormToScreen();
+    const data = {
+      activeId,
+      screens: screens.map(s => ({
+        name: s.name, posX: s.posX, posY: s.posY, visible: s.visible,
+        inputMode: s.inputMode, mode: s.mode,
+        fields: s.fields,
+        logoData: s.logoData   // dataURL логотипов тоже сохраняем
+      }))
+    };
+    localStorage.setItem(SESSION_KEY, JSON.stringify(data));
+  } catch (e) {
+    console.warn('Не удалось сохранить сессию:', e);
+  }
+}
+
+function loadSession() {
+  try {
+    const raw = localStorage.getItem(SESSION_KEY);
+    if (!raw) return false;
+    const data = JSON.parse(raw);
+    if (!data || !Array.isArray(data.screens) || data.screens.length === 0) return false;
+
+    screens = data.screens.map((sv, i) => {
+      const base = defaultScreen(sv.name || ('Screen ' + (i + 1)), sv.posX || 0, sv.posY || 0);
+      base.name      = sv.name      ?? base.name;
+      base.posX      = sv.posX      ?? base.posX;
+      base.posY      = sv.posY      ?? base.posY;
+      base.visible   = (sv.visible !== undefined) ? sv.visible : base.visible;
+      base.inputMode = sv.inputMode ?? base.inputMode;
+      base.mode      = sv.mode      ?? base.mode;
+      // Аккуратно домешиваем поля (чтобы новые дефолты не потерялись)
+      base.fields    = Object.assign({}, base.fields, sv.fields || {});
+      base.logoData  = Object.assign({}, base.logoData, sv.logoData || {});
+      return base;
+    });
+
+    activeId = (typeof data.activeId === 'number' && data.activeId < screens.length)
+      ? data.activeId : 0;
+    return true;
+  } catch (e) {
+    console.warn('Не удалось загрузить сессию:', e);
+    return false;
+  }
 }
 
 let screens = [ defaultScreen('Screen 1', 0, 0) ];
@@ -798,8 +872,34 @@ function drawCenterBlock(ctx, s, d) {
   const hasText = lines.length > 0;
 
   const pct = parseFloat(f.circlePct) / 100;
-  const cd = Math.min(W, H) * pct;
-  const fontSize = cd * (parseFloat(f.txtSizePct) / 100);
+  const cd = Math.min(W, H) * pct;   // диаметр круга
+
+  // txtSizePct теперь = доля заполнения круга (2%..100% и т.д.)
+  const fillRatio = parseFloat(f.txtSizePct) / 100;
+
+  let fontSize = cd * 0.5 * fillRatio;   // стартовое приближение
+
+  if (hasText) {
+    // 1) Вычисляем МАКСИМАЛЬНЫЙ размер, при котором текст влезает в 90% круга
+    const maxTextW = cd * 0.90;
+    const maxTextH = cd * 0.90;
+
+    let longest = '';
+    lines.forEach(l => { if (l.length > longest.length) longest = l; });
+
+    // Меряем при опорном размере 100px, потом масштабируем
+    const REF = 100;
+    ctx.font = `bold ${REF}px sans-serif`;
+    const refW = ctx.measureText(longest).width || 1;
+    const refH = lines.length * REF * 1.3;
+
+    const fitByW = maxTextW / refW * REF;   // макс. размер по ширине
+    const fitByH = maxTextH / refH * REF;   // макс. размер по высоте
+    const maxFit = Math.min(fitByW, fitByH); // максимально влезающий шрифт
+
+    // 2) txtSizePct = процент от этого максимума
+    fontSize = maxFit * fillRatio;
+  }
   const lineH = fontSize * 1.3;
   const textBlockH = hasText ? lines.length * lineH : 0;
 
@@ -814,9 +914,21 @@ function drawCenterBlock(ctx, s, d) {
   const blockTop = H / 2 - totalBlockH / 2;
 
   // --- Лого 1 ---
+  const manual1 = b(f.logo1manual);
+  const moveText = b(f.logo1moveText);   // двигать текст вместе с лого?
+  const off1x = manual1 ? (parseInt(f.logo1x) || 0) : 0;
+  const off1y = manual1 ? (parseInt(f.logo1y) || 0) : 0;
+
+  // Смещение для ЛОГО — всегда применяется (если ручной режим)
+  const logoOffX = off1x;
+  const logoOffY = off1y;
+  // Смещение для ТЕКСТА — только если включено "двигать вместе"
+  const textOffX = moveText ? off1x : 0;
+  const textOffY = moveText ? off1y : 0;
+
   if (logo1visible) {
-    const lx = W / 2 - logo1W / 2;
-    const ly = blockTop;
+    const lx = W / 2 - logo1W / 2 + logoOffX;
+    const ly = blockTop + logoOffY;
     if (b(f.logo1bg)) {
       const pad = logo1W * 0.12;
       const [r, g, bv] = hexToRgb(f.logo1bgColor);
@@ -830,9 +942,10 @@ function drawCenterBlock(ctx, s, d) {
     ctx.globalAlpha = 1;
   }
 
-  // --- Текст ---
+   // --- Текст ---
   if (!hasText) return;
-  const textTopY = blockTop + logo1H + gap + lineH / 2;
+  const textTopY = blockTop + logo1H + gap + lineH / 2 + textOffY;
+  const textCX = W / 2 + textOffX;
   ctx.font = `bold ${Math.round(fontSize)}px sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -843,7 +956,7 @@ function drawCenterBlock(ctx, s, d) {
     const padX = fontSize * 0.6, padY = fontSize * 0.4;
     const boxW = maxW + padX * 2;
     const boxH = lines.length * lineH + padY * 2 - (lineH - fontSize);
-    const boxX = W / 2 - boxW / 2;
+    const boxX = textCX - boxW / 2;
     const boxY = textTopY - lineH / 2 - padY + (lineH - fontSize) / 2;
     const [r, g, bv] = hexToRgb(f.txtBgColor);
     const a = parseFloat(f.txtBgAlpha) / 100;
@@ -854,7 +967,7 @@ function drawCenterBlock(ctx, s, d) {
 
   ctx.fillStyle = f.txtColor;
   lines.forEach((line, i) => {
-    ctx.fillText(line, W / 2, textTopY + i * lineH);
+    ctx.fillText(line, textCX, textTopY + i * lineH);
   });
 }
 
@@ -918,7 +1031,7 @@ function drawComposition(ctx, comp, withOverlay) {
     // Оверлей (только превью)
     if (withOverlay) {
       // Линии сетки
-      if (getEl('showLines').checked) {
+      if (withOverlay.lines) {
         ctx.save();
         ctx.translate(s.posX, s.posY);
         ctx.strokeStyle = 'rgba(120,120,120,0.6)';
@@ -932,7 +1045,7 @@ function drawComposition(ctx, comp, withOverlay) {
         ctx.restore();
       }
       // Номера кабинетов
-      if (getEl('showNums').checked) {
+      if (withOverlay.nums) {
         ctx.save();
         ctx.translate(s.posX, s.posY);
         ctx.fillStyle = '#ff8800';
@@ -947,9 +1060,9 @@ function drawComposition(ctx, comp, withOverlay) {
         ctx.restore();
       }
       // Границы экрана + подпись
-      if (getEl('showBorders').checked) {
+      if (withOverlay.borders) {
         ctx.save();
-        const active = (idx === activeId);
+       const active = withOverlay.activeHighlight && (idx === activeId);
         ctx.strokeStyle = active ? '#4ec9b0' : '#00a0ff';
         ctx.lineWidth = active ? 4 : 2;
         ctx.strokeRect(s.posX, s.posY, d.w, d.h);
@@ -980,7 +1093,7 @@ function generate() {
 
   // Убедимся, что все логотипы всех экранов загружены как Image
   let pending = 0, done = false;
-  const finish = () => { if (done && pending === 0) renderPreview(); };
+  const finish = () => { if (done && pending === 0) { renderPreview(); saveSession(); } };
   screens.forEach(s => {
     [1, 2].forEach(n => {
       if (s.logoData[n] && !(s._logoImg[n] && s._logoImg[n].src === s.logoData[n])) {
@@ -990,7 +1103,7 @@ function generate() {
     });
   });
   done = true;
-  if (pending === 0) renderPreview();
+  if (pending === 0) { renderPreview(); saveSession(); }
 }
 
 function renderPreview() {
@@ -1017,9 +1130,14 @@ function renderPreview() {
   canvas.style.width = (comp.w * scale) + 'px';
   canvas.style.height = (comp.h * scale) + 'px';
 
-  const ctx = canvas.getContext('2d');
+    const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, comp.w, comp.h);
-  drawComposition(ctx, comp, true);
+  drawComposition(ctx, comp, {
+    lines: getEl('showLines').checked,
+    nums: getEl('showNums').checked,
+    borders: getEl('showBorders').checked,
+    activeHighlight: true
+  });
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1035,12 +1153,77 @@ function savePNG() {
   tmp.width = comp.w;
   tmp.height = comp.h;
   const ctx = tmp.getContext('2d');
-  drawComposition(ctx, comp, false);
+  const pngOverlay = (getEl('showLines').checked || getEl('showNums').checked || getEl('showBorders').checked)
+    ? { lines:getEl('showLines').checked, nums:getEl('showNums').checked, borders:getEl('showBorders').checked, activeHighlight:false }
+    : null;
+  drawComposition(ctx, comp, pngOverlay);
 
   const link = document.createElement('a');
   link.download = `composition_${comp.w}x${comp.h}.png`;
   link.href = tmp.toDataURL('image/png');
   link.click();
+}
+
+/* ═══ Сохранить КАЖДЫЙ экран отдельным PNG ═══ */
+function saveAllPNG() {
+  readFormToScreen();
+  const vis = screens.filter(s => s.visible);
+  if (vis.length === 0) { alert('Нет видимых экранов!'); return; }
+
+    const pngOverlay = (getEl('showLines').checked || getEl('showNums').checked || getEl('showBorders').checked)
+    ? { lines:getEl('showLines').checked, nums:getEl('showNums').checked, borders:getEl('showBorders').checked, activeHighlight:false }
+    : null;
+
+  vis.forEach((s, i) => {
+    const d = getScreenSize(s);
+    const tmp = document.createElement('canvas');
+    tmp.width = d.w;
+    tmp.height = d.h;
+    const ctx = tmp.getContext('2d');
+
+    // фон
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, d.w, d.h);
+
+    // рисуем контент экрана
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, d.w, d.h);
+    ctx.clip();
+    drawScreenContent(ctx, s, d);
+    ctx.restore();
+
+    // оверлей (если включён для PNG)
+    if (pngOverlay) {
+      if (pngOverlay.lines) {
+        ctx.strokeStyle = 'rgba(120,120,120,0.6)';
+        ctx.lineWidth = Math.max(1, Math.round(d.cabPxW / 96));
+        for (let x = 0; x <= d.cabsX; x++) { ctx.beginPath(); ctx.moveTo(x*d.cabPxW,0); ctx.lineTo(x*d.cabPxW,d.h); ctx.stroke(); }
+        for (let y = 0; y <= d.cabsY; y++) { ctx.beginPath(); ctx.moveTo(0,y*d.cabPxH); ctx.lineTo(d.w,y*d.cabPxH); ctx.stroke(); }
+      }
+      if (pngOverlay.nums) {
+        ctx.fillStyle = '#ff8800';
+        ctx.font = `${Math.round(d.cabPxH/6)}px sans-serif`;
+        ctx.textAlign='center'; ctx.textBaseline='middle';
+        let num=1;
+        for (let y=0;y<d.cabsY;y++) for (let x=0;x<d.cabsX;x++){ ctx.fillText(num, x*d.cabPxW+d.cabPxW/2, y*d.cabPxH+d.cabPxH/2); num++; }
+      }
+      if (pngOverlay.borders) {
+        ctx.strokeStyle = '#00a0ff';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(0, 0, d.w, d.h);
+      }
+    }
+
+    // Скачиваем с небольшой задержкой (браузеры блокируют пачку загрузок)
+    const safeName = (s.name || ('screen_' + (i+1))).replace(/[^\wа-яА-Я0-9\-]+/g, '_');
+    setTimeout(() => {
+      const link = document.createElement('a');
+      link.download = `${safeName}_${d.w}x${d.h}.png`;
+      link.href = tmp.toDataURL('image/png');
+      link.click();
+    }, i * 400);
+  });
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -1144,11 +1327,11 @@ document.querySelectorAll('input, select').forEach(el => {
     if (nx < 0) nx = 0;
     if (ny < 0) ny = 0;
 
-    cur.posX = nx;
+       cur.posX = nx;
     cur.posY = ny;
     getEl('posX').value = nx;
     getEl('posY').value = ny;
-    generate();
+    renderPreview();   // только перерисовка, без saveSession на каждый пиксель
   });
 
   window.addEventListener('mouseup', () => {
@@ -1172,9 +1355,56 @@ document.querySelectorAll('input, select').forEach(el => {
    СТАРТ
 ═══════════════════════════════════════════════════════════════════════════ */
 
+// ─── Сворачиваемые секции ───────────────────────────────────────────────────
+function makeCollapsible() {
+  document.querySelectorAll('.panel').forEach(panel => {
+    const h4 = panel.querySelector('h4');
+    if (!h4 || h4.dataset.collapsibleReady) return;
+    h4.dataset.collapsibleReady = '1';
+    h4.classList.add('collapsible');
+
+    // стрелка
+    const arrow = document.createElement('span');
+    arrow.className = 'collapse-arrow';
+    arrow.textContent = '▼';
+    h4.insertBefore(arrow, h4.firstChild);
+
+    // оборачиваем всё после h4 в .collapse-body
+    const body = document.createElement('div');
+    body.className = 'collapse-body';
+    let node = h4.nextSibling;
+    while (node) {
+      const next = node.nextSibling;
+      body.appendChild(node);
+      node = next;
+    }
+    panel.appendChild(body);
+
+    // восстановить состояние
+    const key = 'collapse_' + (h4.textContent.trim());
+    if (localStorage.getItem(key) === '1') panel.classList.add('collapsed');
+
+    h4.addEventListener('click', () => {
+      panel.classList.toggle('collapsed');
+      localStorage.setItem(key, panel.classList.contains('collapsed') ? '1' : '0');
+    });
+  });
+}
+
+// ─── Определяем: это перезагрузка (F5) или новое открытие вкладки? ───────────
+const isReload = sessionStorage.getItem('ledAlive') === '1';
+
+if (isReload) {
+  loadSession();   // F5 → восстанавливаем
+} else {
+  localStorage.removeItem(SESSION_KEY);   // новое открытие → сброс
+}
+sessionStorage.setItem('ledAlive', '1');
+
 renderPresetButtons();
 writeScreenToForm();
 renderTabs();
+makeCollapsible();
 generate();
 </script>
 </body>
