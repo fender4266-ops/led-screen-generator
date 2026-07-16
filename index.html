@@ -2,6 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
 <title>LED Multi-Screen Map</title>
 <style>
   body { background:#1e1e1e; color:#ddd; font-family:sans-serif; margin:0; padding:20px; }
@@ -46,11 +47,161 @@
   .collapse-arrow { transition:transform 0.2s; font-size:12px; color:#888; }
   .panel.collapsed .collapse-body { display:none; }
   .panel.collapsed .collapse-arrow { transform:rotate(-90deg); }
+
+    /* ── Переключатель страниц ── */
+  .page-switch { display:flex; gap:0; margin-bottom:20px; border-bottom:2px solid #444; }
+  .page-switch button {
+    background:#2a2a2a; color:#aaa; border:none; padding:12px 28px;
+    border-radius:8px 8px 0 0; font-size:15px; font-weight:bold; cursor:pointer;
+    border:1px solid #444; border-bottom:none; margin-right:4px;
+  }
+  .page-switch button.active { background:#4ec9b0; color:#111; }
+  .page-switch button:hover:not(.active) { background:#333; color:#fff; }
+  .page { display:none; }
+  .page.active { display:block; }
+
+  /* ── Кнопки направления разводки (8 иконок NovaLCT) ── */
+  .dir-grid {
+    display:grid;
+    grid-template-columns:repeat(4, 1fr);
+    gap:10px;
+    max-width:520px;
+  }
+  .dir-btn {
+    background:#eee;
+    border:2px solid #555;
+    border-radius:6px;
+    padding:6px;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    transition:all 0.15s;
+    aspect-ratio:1.3;
+  }
+  .dir-btn:hover { border-color:#4ec9b0; background:#fff; }
+  .dir-btn.active {
+    border-color:#4ec9b0;
+    background:#d8fff5;
+    box-shadow:0 0 0 2px #4ec9b0;
+  }
+    .dir-btn svg { width:100%; height:100%; display:block; }
+
+/* ═══════════════════════════════════════════════════════════════
+   📱 МОБИЛЬНАЯ ВЕРСИЯ (экраны уже 820px)
+   ═══════════════════════════════════════════════════════════════ */
+@media (max-width: 820px) {
+
+  body { padding:10px; }
+
+  /* Заголовки страниц */
+  h2 { font-size:20px; }
+  h4 { font-size:15px; }
+
+  /* Панели компактнее */
+  .panel { padding:12px; margin-bottom:12px; }
+
+  /* Строки — в столбик, но с переносом */
+  .row {
+    gap:12px;
+    flex-wrap:wrap;
+  }
+
+  /* Поля ввода — на всю ширину, крупные (удобно пальцем) */
+  label { font-size:14px; width:100%; }
+
+  input[type="number"],
+  input[type="text"],
+  select {
+    width:100% !important;
+    box-sizing:border-box;
+    padding:12px;
+    font-size:16px;   /* 16px = iOS не зумит при фокусе 👍 */
+  }
+
+  /* Цвет и range — не на всю ширину */
+  input[type="color"] {
+    width:60px !important;
+    height:44px;
+  }
+  input[type="range"] { width:100% !important; }
+
+  /* Чекбоксы — в строку, крупные */
+  .checkbox { width:auto !important; }
+  input[type="checkbox"] {
+    width:22px; height:22px;
+  }
+
+  /* Кнопки — крупные, палец попадёт */
+  button {
+    padding:12px 16px;
+    font-size:15px;
+  }
+  .mode-btns { width:100%; }
+  .mode-btns button { flex:1; min-width:120px; }
+
+  /* Переключатель страниц — на всю ширину */
+  .page-switch { flex-wrap:wrap; }
+  .page-switch button {
+    flex:1;
+    padding:12px 10px;
+    font-size:14px;
+    margin-right:2px;
+  }
+
+  /* Логотипы — друг под другом */
+  .logo-block { min-width:100%; }
+
+  /* Направление разводки — 2 колонки вместо 4 */
+  .dir-grid {
+    grid-template-columns:repeat(2, 1fr);
+    max-width:100%;
+  }
+
+  /* Табы экранов — с переносом */
+  .screen-tabs { gap:4px; }
+  .screen-tab { padding:8px 10px; font-size:13px; }
+
+  /* Пресеты — переносятся */
+  #presetBtns { gap:8px; }
+  #presetBtns button { flex:1; min-width:100px; }
+
+  /* Превью и карта — на всю ширину */
+  #preview, #engCanvas {
+    width:100% !important;
+    height:auto !important;
+  }
+
+  /* Инфо-блоки читаемее */
+  .info { font-size:13px; }
+
+  /* Логотип-превью чуть больше */
+  .logo-preview-wrap { width:70px; height:70px; }
+}
+
+/* ═══ Совсем маленькие экраны (телефоны < 480px) ═══ */
+@media (max-width: 480px) {
+  .page-switch button { font-size:13px; padding:10px 6px; }
+  h4 { font-size:14px; }
+
+  /* Направление разводки — снова можно 2, но кнопки поменьше */
+  .dir-btn { padding:4px; }
+
+  /* Табы ещё компактнее */
+  .screen-tab { padding:6px 8px; font-size:12px; }
+}
 </style>
 </head>
 <body>
 
-<h2>LED Multi-Screen Map Generator</h2>
+<!-- ПЕРЕКЛЮЧАТЕЛЬ СТРАНИЦ -->
+<div class="page-switch">
+  <button id="pageBtn-visual" class="active" onclick="switchPage('visual')">🎨 Визуализация</button>
+  <button id="pageBtn-engineer" onclick="switchPage('engineer')">⚙️ Инженерный расчёт</button>
+</div>
+
+<!-- ═══════════ СТРАНИЦА 1: ВИЗУАЛИЗАЦИЯ ═══════════ -->
+<div id="page-visual" class="page active">
 
 <!-- ТАБЫ ЭКРАНОВ -->
 <div class="panel">
@@ -305,6 +456,79 @@
 </div>
 
 <canvas id="preview"></canvas>
+</div><!-- /page-visual -->
+
+
+<!-- ═══════════ СТРАНИЦА 2: ИНЖЕНЕРНЫЙ РАСЧЁТ ═══════════ -->
+<div id="page-engineer" class="page">
+
+  <!-- ВВОД -->
+  <div class="panel">
+    <h4>📐 Параметры экрана</h4>
+
+    <div class="row">
+      <span style="font-size:13px;">Тип кабинета (шаг):</span>
+      <div class="mode-btns">
+        <button class="cabtype-btn active" data-cab="P3.9" onclick="engSetCab('P3.9')">P3.9 · 128×128</button>
+        <button class="cabtype-btn" data-cab="P2.9" onclick="engSetCab('P2.9')">P2.9 · 168×168</button>
+        <button class="cabtype-btn" data-cab="P2.6" onclick="engSetCab('P2.6')">P2.6 · 192×192</button>
+        <button class="cabtype-btn" data-cab="P1.9" onclick="engSetCab('P1.9')">P1.9 · 256×256</button>
+      </div>
+    </div>
+
+    <div class="row" style="margin-top:14px;">
+      <label>Ширина (м)<input type="number" id="engMW" value="5" step="0.5" oninput="engFromMeters()"></label>
+      <label>Высота (м)<input type="number" id="engMH" value="3" step="0.5" oninput="engFromMeters()"></label>
+      <span style="font-size:20px;color:#666;">↔</span>
+      <label>Кабинетов в ширину<input type="number" id="engCX" value="10" oninput="engFromCabs()"></label>
+      <label>Кабинетов в высоту<input type="number" id="engCY" value="6" oninput="engFromCabs()"></label>
+    </div>
+
+              <div class="row" style="margin-top:14px; align-items:flex-start;">
+      <div style="width:100%;">
+        <div style="font-size:13px; margin-bottom:8px;">Направление разводки:</div>
+        <input type="hidden" id="engDir" value="1">
+        <div class="dir-grid" id="dirGrid"></div>
+      </div>
+    </div>
+
+        <div class="row" style="margin-top:14px;">
+      <label class="checkbox">
+        <input type="checkbox" id="engPortsSameStart" onchange="engToggleStartEdge()">
+        🔝 Каждый порт заходит с одного края (удобно)
+      </label>
+    </div>
+
+      <div class="row" id="startEdgeRow" style="margin-top:10px; display:none;">
+      <label>Край старта портов:
+        <select id="engStartEdge" onchange="engCalc()">
+          <option value="top">⬆️ Все сверху</option>
+          <option value="bottom">⬇️ Все снизу</option>
+          <option value="left">⬅️ Все слева</option>
+          <option value="right">➡️ Все справа</option>
+        </select>
+      </label>
+    </div>
+  </div>
+  
+
+  <!-- РЕЗУЛЬТАТ -->
+  <div class="panel">
+    <h4>📊 Результат расчёта</h4>
+    <div class="info" id="engResult" style="line-height:1.9;">—</div>
+  </div>
+
+  <!-- КАРТА -->
+  <div class="panel">
+    <h4>🗺️ Карта расключения</h4>
+    <div class="row">
+      <button onclick="engSavePNG()" style="background:#8a2be2;">💾 Сохранить карту PNG</button>
+    </div>
+    <canvas id="engCanvas" style="border:1px solid #444; max-width:100%; margin-top:12px; background:#111;"></canvas>
+  </div>
+
+</div><!-- /page-engineer -->
+
 
 <script>
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -334,7 +558,7 @@ function defaultScreen(name, x, y) {
       dirW:520, dirH:430, dirPhysW:0, dirPhysH:0, dirCell:96,
       col1:'#ffffff', col2:'#000000', gradDir:'h', gradA:'#000000', gradB:'#ffffff',
       showCross:false, crossColor:'#ff0000', crossLW:4, circlePct:50,
-      txtName:true, txtRes:true, txtSize:false, txtColor:'#ffff00', txtSizePct:12,
+      txtName:true, txtRes:true, txtSize:false, txtColor:'#ffff00', txtSizePct:40,
       txtBg:true, txtBgColor:'#000000', txtBgAlpha:60,
            logo1on:true, logo1size:20, logo1alpha:100, logo1bg:false, logo1bgColor:'#000000', logo1bgAlpha:50, logo1gap:20, logo1manual:false, logo1moveText:false, logo1x:0, logo1y:0,
       logo2on:true, logo2corner:'br', logo2size:12, logo2alpha:100, logo2margin:20, logo2bg:false, logo2bgColor:'#000000', logo2bgAlpha:50
@@ -1230,7 +1454,7 @@ function saveAllPNG() {
    Живое обновление формы + перетаскивание экранов мышью по превью
 ═══════════════════════════════════════════════════════════════════════════ */
 
-document.querySelectorAll('input, select').forEach(el => {
+document.querySelectorAll('#page-visual input, #page-visual select').forEach(el => {
   el.addEventListener('input', () => { readFormToScreen(); generate(); });
   el.addEventListener('change', () => { readFormToScreen(); generate(); });
 });
@@ -1391,20 +1615,628 @@ function makeCollapsible() {
   });
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   ⚙️ СТРАНИЦА ИНЖЕНЕРА — расчёт процессора + карта расключения
+═══════════════════════════════════════════════════════════════════════════ */
+
+/* ═══ 8 иконок направления разводки (как в NovaLCT) ═══ */
+// Каждая иконка = реальная траектория змейки со стрелкой на конце.
+// Строим SVG-путь мини-змейки 3×3 по той же логике, что buildSnake.
+function buildDirIconPath(dir) {
+  const n = 3;                       // сетка 3×3 для иконки
+  const vertical = (dir === 1 || dir === 3 || dir === 5 || dir === 7);
+  const order = [];
+  if (vertical) {
+    const leftToRight = (dir === 1 || dir === 5);
+    const downFirst   = (dir === 1 || dir === 3);
+    const cols = [];
+    for (let i = 0; i < n; i++) cols.push(leftToRight ? i : n - 1 - i);
+    cols.forEach((col, idx) => {
+      const goingDown = downFirst ? (idx % 2 === 0) : (idx % 2 === 1);
+      for (let r = 0; r < n; r++) {
+        const row = goingDown ? r : n - 1 - r;
+        order.push({ x: col, y: row });
+      }
+    });
+  } else {
+    const topToBottom      = (dir === 2 || dir === 4);
+    const leftToRightStart = (dir === 2 || dir === 6);
+    const rows = [];
+    for (let i = 0; i < n; i++) rows.push(topToBottom ? i : n - 1 - i);
+    rows.forEach((row, idx) => {
+      const goingRight = leftToRightStart ? (idx % 2 === 0) : (idx % 2 === 1);
+      for (let c = 0; c < n; c++) {
+        const col = goingRight ? c : n - 1 - c;
+        order.push({ x: col, y: row });
+      }
+    });
+  }
+  return order;
+}
+
+function makeDirIconSVG(dir) {
+  const order = buildDirIconPath(dir);
+  const n = 3, step = 26, pad = 12;
+  const cx = p => pad + p.x * step;
+  const cy = p => pad + p.y * step;
+
+  // Ломаная линия
+  let poly = order.map(p => `${cx(p)},${cy(p)}`).join(' ');
+
+  // Стрелка на конце
+  const a = order[order.length - 2], b = order[order.length - 1];
+  const ax = cx(a), ay = cy(a), bx = cx(b), by = cy(b);
+  const ang = Math.atan2(by - ay, bx - ax);
+  const s = 8;
+  const a1x = bx - s * Math.cos(ang - 0.5), a1y = by - s * Math.sin(ang - 0.5);
+  const a2x = bx - s * Math.cos(ang + 0.5), a2y = by - s * Math.sin(ang + 0.5);
+
+  // Кружок старта
+  const st = order[0];
+
+  return `
+    <svg viewBox="0 0 ${pad*2 + step*(n-1)} ${pad*2 + step*(n-1)}">
+      <polyline points="${poly}" fill="none" stroke="#333" stroke-width="4"
+        stroke-linejoin="round" stroke-linecap="round"/>
+      <polygon points="${bx},${by} ${a1x},${a1y} ${a2x},${a2y}" fill="#333"/>
+      <circle cx="${cx(st)}" cy="${cy(st)}" r="5" fill="#e74c3c"/>
+    </svg>`;
+}
+
+function renderDirButtons() {
+  const grid = getEl('dirGrid');
+  if (!grid) return;
+  grid.innerHTML = '';
+  const current = parseInt(getEl('engDir').value) || 1;
+  for (let dir = 1; dir <= 8; dir++) {
+    const btn = document.createElement('div');
+    btn.className = 'dir-btn' + (dir === current ? ' active' : '');
+    btn.title = 'Направление ' + dir;
+    btn.innerHTML = makeDirIconSVG(dir);
+    btn.onclick = () => setEngDir(dir);
+    grid.appendChild(btn);
+  }
+}
+
+function setEngDir(dir) {
+  getEl('engDir').value = dir;
+  document.querySelectorAll('.dir-btn').forEach((b, i) =>
+    b.classList.toggle('active', (i + 1) === dir));
+  engCalc();
+}
+// Показать/скрыть выбор края старта
+function engToggleStartEdge() {
+  const chk = getEl('engPortsSameStart');
+  const row = getEl('startEdgeRow');
+  if (!chk || !row) return;
+  row.style.display = chk.checked ? 'flex' : 'none';
+  engCalc();
+}
+
+
+// Переключение страниц
+function switchPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  document.getElementById('pageBtn-visual').classList.toggle('active', name === 'visual');
+  document.getElementById('pageBtn-engineer').classList.toggle('active', name === 'engineer');
+
+  if (name === 'engineer') {
+    syncVisualToEngineer();   // 🔄 берём параметры активного экрана визуализации
+    engCalc();
+  } else if (name === 'visual') {
+    syncEngineerToVisual();   // 🔄 переносим параметры инженерки в активный экран
+  }
+}
+
+// ─── Сопоставление разрешения кабинета (px) ↔ тип кабинета ──────────────────
+function pxToCabType(px) {
+  // ищем тип с совпадающим разрешением
+  for (const [type, data] of Object.entries(CAB_TYPES)) {
+    if (data.px === px) return type;
+  }
+  return null;   // нет точного совпадения
+}
+
+// ─── 🔄 Визуализация → Инженерка ────────────────────────────────────────────
+function syncVisualToEngineer() {
+  readFormToScreen();
+  const s = screens[activeId];
+  const d = getScreenSize(s);           // содержит physW, physH, cabPxW
+  const f = s.fields;
+
+  // Физические размеры (метры)
+  let mw = 0, mh = 0;
+  if (s.inputMode === 'cab') {
+    mw = parseFloat(f.physW) || 0;
+    mh = parseFloat(f.physH) || 0;
+  } else {
+    // прямой ввод — берём физ. размеры, если заданы
+    mw = parseFloat(f.dirPhysW) || 0;
+    mh = parseFloat(f.dirPhysH) || 0;
+  }
+
+  // Разрешение кабинета (px) → тип
+  const cabPx = (s.inputMode === 'cab') ? parseInt(f.cabPxW) : parseInt(f.dirCell);
+  const matchedType = pxToCabType(cabPx);
+  if (matchedType) {
+    engCabType = matchedType;
+    document.querySelectorAll('.cabtype-btn').forEach(b =>
+      b.classList.toggle('active', b.dataset.cab === engCabType));
+  }
+
+  // Переносим метры (если заданы)
+  if (mw > 0 && mh > 0) {
+    getEl('engMW').value = mw;
+    getEl('engMH').value = mh;
+    getEl('engCX').value = Math.max(1, Math.round(mw / CAB_SIZE_M));
+    getEl('engCY').value = Math.max(1, Math.round(mh / CAB_SIZE_M));
+  } else {
+    // метров нет — берём кол-во кабинетов из размеров
+    getEl('engCX').value = d.cabsX;
+    getEl('engCY').value = d.cabsY;
+    getEl('engMW').value = (d.cabsX * CAB_SIZE_M);
+    getEl('engMH').value = (d.cabsY * CAB_SIZE_M);
+  }
+}
+
+// ─── 🔄 Инженерка → Визуализация ────────────────────────────────────────────
+function syncEngineerToVisual() {
+  const cab = CAB_TYPES[engCabType];
+  const cx = parseInt(getEl('engCX').value) || 0;
+  const cy = parseInt(getEl('engCY').value) || 0;
+  const mw = parseFloat(getEl('engMW').value) || (cx * CAB_SIZE_M);
+  const mh = parseFloat(getEl('engMH').value) || (cy * CAB_SIZE_M);
+  if (cx < 1 || cy < 1) return;
+
+  const s = screens[activeId];
+  // Переводим активный экран в режим "по кабинетам"
+  s.inputMode = 'cab';
+  inputMode = 'cab';
+  s.fields.physW   = mw;
+  s.fields.physH   = mh;
+  s.fields.cabPhys = CAB_SIZE_M;
+  s.fields.cabPxW  = cab.px;
+  s.fields.cabPxH  = cab.px;
+
+  writeScreenToForm();
+  applyInputButtons();
+  generate();
+}
+
+// Данные кабинетов: разрешение + лимит на линию
+const CAB_TYPES = {
+  'P3.9': { px:128, perLine:40 },
+  'P2.9': { px:168, perLine:20 },
+  'P2.6': { px:192, perLine:15 },
+  'P1.9': { px:256, perLine:8  }
+};
+
+// Процессоры Novastar. ports = ВСЕГО портов, реально master = ports/2 (backup!)
+const PROCESSORS = [
+  { name:'Novastar VX400',        maxPx:2600000,  ports:4,  pxPerPort:650000 },
+  { name:'Novastar VX600',        maxPx:3900000,  ports:6,  pxPerPort:650000 },
+  { name:'Novastar VX1000',       maxPx:6500000,  ports:10, pxPerPort:650000 },
+  { name:'Novastar MCTRL4K',      maxPx:8800000,  ports:16, pxPerPort:550000 },
+  { name:'Novastar VX2000',       maxPx:13000000, ports:20, pxPerPort:650000 },
+  { name:'Novastar VX2000 + 4×CWT',maxPx:13000000,ports:40, pxPerPort:650000 }
+];
+
+const CAB_SIZE_M = 0.5;   // все кабинеты 0.5×0.5 м
+let engCabType = 'P3.9';
+
+// ─── Автосохранение инженерной страницы (F5-защита) ─────────────────────────
+const ENG_SESSION_KEY = 'ledEngSession';
+
+function saveEngSession() {
+  try {
+    const data = {
+      cabType: engCabType,
+      cx: getEl('engCX').value,
+      cy: getEl('engCY').value,
+      mw: getEl('engMW').value,
+      mh: getEl('engMH').value,
+      dir: getEl('engDir').value,
+      sameStart: getEl('engPortsSameStart').checked,
+      startEdge: getEl('engStartEdge') ? getEl('engStartEdge').value : 'top'
+    };
+    localStorage.setItem(ENG_SESSION_KEY, JSON.stringify(data));
+  } catch (e) { console.warn('Не удалось сохранить инженерную сессию:', e); }
+}
+
+function loadEngSession() {
+  try {
+    const raw = localStorage.getItem(ENG_SESSION_KEY);
+    if (!raw) return false;
+    const d = JSON.parse(raw);
+    if (!d) return false;
+
+    if (d.cabType && CAB_TYPES[d.cabType]) {
+      engCabType = d.cabType;
+      document.querySelectorAll('.cabtype-btn').forEach(b =>
+        b.classList.toggle('active', b.dataset.cab === engCabType));
+    }
+    if (d.cx) getEl('engCX').value = d.cx;
+    if (d.cy) getEl('engCY').value = d.cy;
+    if (d.mw) getEl('engMW').value = d.mw;
+    if (d.mh) getEl('engMH').value = d.mh;
+    if (d.dir) getEl('engDir').value = d.dir;
+    if (d.sameStart !== undefined) getEl('engPortsSameStart').checked = d.sameStart;
+    if (d.startEdge && getEl('engStartEdge')) getEl('engStartEdge').value = d.startEdge;
+    return true;
+  } catch (e) {
+    console.warn('Не удалось загрузить инженерную сессию:', e);
+    return false;
+  }
+}
+
+// Выбор типа кабинета
+function engSetCab(type) {
+  engCabType = type;
+  document.querySelectorAll('.cabtype-btn').forEach(b =>
+    b.classList.toggle('active', b.dataset.cab === type));
+  engFromMeters();
+}
+
+// Метры → кабинеты
+function engFromMeters() {
+  const mw = parseFloat(getEl('engMW').value) || 0;
+  const mh = parseFloat(getEl('engMH').value) || 0;
+  getEl('engCX').value = Math.max(1, Math.round(mw / CAB_SIZE_M));
+  getEl('engCY').value = Math.max(1, Math.round(mh / CAB_SIZE_M));
+  engCalc();
+}
+
+// Кабинеты → метры
+function engFromCabs() {
+  const cx = parseInt(getEl('engCX').value) || 0;
+  const cy = parseInt(getEl('engCY').value) || 0;
+  getEl('engMW').value = (cx * CAB_SIZE_M);
+  getEl('engMH').value = (cy * CAB_SIZE_M);
+  engCalc();
+}
+
+function engCalc() {
+  const cxEl = getEl('engCX');
+  const cyEl = getEl('engCY');
+  if (!cxEl || !cyEl) return;   // элементы ещё не готовы
+  const cab = CAB_TYPES[engCabType];
+  const cx = parseInt(cxEl.value) || 0;
+  const cy = parseInt(cyEl.value) || 0;
+  if (cx < 1 || cy < 1) { getEl('engResult').innerHTML = 'Введите размеры.'; return; }
+
+  const totalCabs = cx * cy;
+  const totalPx = totalCabs * cab.px * cab.px;
+  const resW = cx * cab.px, resH = cy * cab.px;
+
+  const dir = parseInt(getEl('engDir').value);
+  const snake = buildSnake(cx, cy, cab.perLine, dir);
+  const lines = snake.lines;
+  const numLines = lines.length;
+
+  // ПРАВИЛО 1: доступно только половина портов (backup) → masterPorts = ports/2
+  // ПРАВИЛО 4: если один не тянет — считаем сколько нужно
+  let chosen = null, needCount = 1;
+  for (const p of PROCESSORS) {
+    const master = p.ports / 2;
+    if (totalPx <= p.maxPx && numLines <= master) { chosen = p; needCount = 1; break; }
+  }
+  // Если ни один одиночный не тянет — берём самый мощный и считаем количество
+  if (!chosen) {
+    const big = PROCESSORS[PROCESSORS.length - 1]; // VX2000+CWT
+    const masterBig = big.ports / 2;
+    const byPorts = Math.ceil(numLines / masterBig);
+    const byPx    = Math.ceil(totalPx / big.maxPx);
+    needCount = Math.max(byPorts, byPx);
+    chosen = big;
+  }
+
+  const master = chosen.ports / 2;
+
+  // Отчёт
+  let html = '';
+  html += `📦 Кабинет: <b>${engCabType}</b> (${cab.px}×${cab.px}px, лимит <b>${cab.perLine}</b>/линия)<br>`;
+  html += `📐 Размер: <b>${(cx*CAB_SIZE_M).toFixed(1)} × ${(cy*CAB_SIZE_M).toFixed(1)} м</b> &nbsp;|&nbsp; <b>${cx} × ${cy}</b> каб<br>`;
+  html += `🧮 Разрешение: <b>${resW} × ${resH} px</b><br>`;
+  html += `🔢 Кабинетов: <b>${totalCabs}</b> &nbsp;|&nbsp; Приёмных карт: <b>${totalCabs}</b><br>`;
+  html += `🖼️ Пикселей: <b>${totalPx.toLocaleString('ru')}</b><br>`;
+  html += `<hr style="border-color:#444;">`;
+  // Правило 2 — сообщение о разбивке
+  if (snake.unitsPerLine >= 1) {
+    const unitName = (dir===2||dir===4||dir===6||dir===8) ? 'строк' : 'колонн';
+    html += `🔗 Линия = <b>${snake.effPerLine}</b> каб (${snake.unitsPerLine} целых ${unitName} × ${snake.unitLen}) — колонна не рвётся ✅<br>`;
+  } else {
+    html += `🔗 Линия = <b>${snake.effPerLine}</b> каб &nbsp;<span style="color:#ffa500;">⚠️ колонна длиннее лимита — вынужденный разрыв</span><br>`;
+  }
+  html += `🔌 Рабочих линий (master): <b>${numLines}</b> &nbsp;<span style="font-size:12px;color:#999;">+${numLines} backup</span><br>`;
+  html += `<hr style="border-color:#444;">`;
+
+  if (needCount === 1) {
+    html += `🖥️ Процессор: <b style="color:#4ec9b0;">${chosen.name}</b> ×1<br>`;
+    html += `<span style="font-size:12px;color:#999;">Портов: ${chosen.ports} (${master} master + ${master} backup) · использовано ${numLines}/${master}</span>`;
+  } else {
+    html += `⚠️ <b style="color:#ff6b6b;">Одного процессора недостаточно!</b><br>`;
+    html += `🖥️ Нужно: <b style="color:#4ec9b0;">${chosen.name} × ${needCount} шт</b><br>`;
+    html += `<span style="font-size:12px;color:#999;">Каждый: ${master} master портов · Всего линий: ${numLines}</span>`;
+  }
+    getEl('engResult').innerHTML = html;
+
+  engDrawMap(cx, cy, cab, lines, resW, resH);
+  saveEngSession();   // 💾 автосохранение инженерных настроек
+}
+
+
+// ─── Построение змейки с учётом "не рвать колонну" (правило 2) ──────────────
+function buildSnake(cx, cy, perLine, dir) {
+  const vertical = (dir === 1 || dir === 3 || dir === 5 || dir === 7);
+
+  // Если включён режим "с одного края" — тип разводки берём от выбранного края
+  const sameStartCheck = getEl('engPortsSameStart') && getEl('engPortsSameStart').checked;
+  const edgeElCheck = getEl('engStartEdge');
+  let effVertical = vertical;
+  if (sameStartCheck && edgeElCheck) {
+    effVertical = (edgeElCheck.value === 'top' || edgeElCheck.value === 'bottom');
+  }
+
+  // ПРАВИЛО 2: сколько ЦЕЛЫХ колонн (строк) влезает в лимит
+  let unitLen = effVertical ? cy : cx;
+  let unitsPerLine = Math.floor(perLine / unitLen);
+
+  let effPerLine;
+  if (unitsPerLine >= 1) {
+    effPerLine = unitsPerLine * unitLen;
+  } else {
+    effPerLine = perLine;
+  }
+
+  // Режим "каждый порт с одного края"
+  const sameStart = sameStartCheck;
+
+  // ═══════════════════════════════════════════════════════════
+  // РЕЖИМ А: каждый порт независимо стартует с ВЫБРАННОГО края
+  // ═══════════════════════════════════════════════════════════
+  if (sameStart && unitsPerLine >= 1) {
+    const edgeEl = getEl('engStartEdge');
+    const edge = edgeEl ? edgeEl.value : 'top';    // top/bottom/left/right
+    const lines = [];
+
+    // Край определяет: вертикальная разводка (top/bottom) или горизонтальная (left/right)
+    const edgeVertical = (edge === 'top' || edge === 'bottom');
+
+    if (edgeVertical) {
+      // ── Порты = группы КОЛОНН, змейка идёт вертикально ──
+      // Первая колонна каждого порта стартует с выбранного края (top/bottom)
+      const startTop = (edge === 'top');
+      const colsOrder = [];
+      for (let i = 0; i < cx; i++) colsOrder.push(i);   // слева-направо
+
+      for (let g = 0; g < colsOrder.length; g += unitsPerLine) {
+        const group = colsOrder.slice(g, g + unitsPerLine);
+        const line = [];
+        group.forEach((col, idx) => {
+          // Первая колонна порта (idx 0) идёт ОТ выбранного края
+          const goingDown = startTop ? (idx % 2 === 0) : (idx % 2 === 1);
+          for (let r = 0; r < cy; r++) {
+            const row = goingDown ? r : cy - 1 - r;
+            line.push({ x: col, y: row });
+          }
+        });
+        lines.push(line);
+      }
+    } else {
+      // ── Порты = группы СТРОК, змейка идёт горизонтально ──
+      // Первая строка каждого порта стартует с выбранного края (left/right)
+      const startLeft = (edge === 'left');
+      const rowsOrder = [];
+      for (let i = 0; i < cy; i++) rowsOrder.push(i);   // сверху-вниз
+
+      for (let g = 0; g < rowsOrder.length; g += unitsPerLine) {
+        const group = rowsOrder.slice(g, g + unitsPerLine);
+        const line = [];
+        group.forEach((row, idx) => {
+          const goingRight = startLeft ? (idx % 2 === 0) : (idx % 2 === 1);
+          for (let c = 0; c < cx; c++) {
+            const col = goingRight ? c : cx - 1 - c;
+            line.push({ x: row === row ? col : col, y: row });
+          }
+        });
+        lines.push(line);
+      }
+    }
+
+    return { lines, effPerLine, unitLen, unitsPerLine };
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // РЕЖИМ Б: непрерывная змейка (как было раньше)
+  // ═══════════════════════════════════════════════════════════
+  let order = [];
+  if (vertical) {
+    const leftToRight = (dir === 1 || dir === 5);
+    const cols = [];
+    for (let i = 0; i < cx; i++) cols.push(leftToRight ? i : cx - 1 - i);
+    let downFirst = (dir === 1 || dir === 3);
+    cols.forEach((col, idx) => {
+      const goingDown = downFirst ? (idx % 2 === 0) : (idx % 2 === 1);
+      const rows = [];
+      for (let r = 0; r < cy; r++) rows.push(goingDown ? r : cy - 1 - r);
+      rows.forEach(row => order.push({ x: col, y: row }));
+    });
+  } else {
+    const topToBottom = (dir === 2 || dir === 4);
+    const rows = [];
+    for (let i = 0; i < cy; i++) rows.push(topToBottom ? i : cy - 1 - i);
+    const leftToRightStart = (dir === 2 || dir === 6);
+    rows.forEach((row, idx) => {
+      const goingRight = leftToRightStart ? (idx % 2 === 0) : (idx % 2 === 1);
+      const cols = [];
+      for (let c = 0; c < cx; c++) cols.push(goingRight ? c : cx - 1 - c);
+      cols.forEach(col => order.push({ x: col, y: row }));
+    });
+  }
+
+  const lines = [];
+  for (let i = 0; i < order.length; i += effPerLine) {
+    lines.push(order.slice(i, i + effPerLine));
+  }
+  return { lines, effPerLine, unitLen, unitsPerLine };
+}
+// ─── Цвета для портов ────────────────────────────────────────────────────────
+const PORT_COLORS = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#1abc9c',
+  '#3498db','#9b59b6','#e84393','#00cec9','#fdcb6e',
+  '#6c5ce7','#00b894','#d63031','#0984e3','#fab1a0',
+  '#55efc4','#ff7675','#a29bfe','#ffeaa7','#74b9ff'];
+
+// ─── Рисование карты расключения ─────────────────────────────────────────────
+function engDrawMap(cx, cy, cab, lines, resW, resH) {
+  const canvas = getEl('engCanvas');
+  const cellSize = 46;             // размер клетки кабинета на карте
+  const pad = 40;
+
+  // Текст заголовка
+  const title = `${engCabType} · ${cx}×${cy} каб · ${resW}×${resH}px · Master линий: ${lines.length} (+${lines.length} backup)`;
+
+  // Измеряем ширину заголовка временным контекстом
+  const measureCtx = canvas.getContext('2d');
+  measureCtx.font = 'bold 20px sans-serif';
+  const titleW = measureCtx.measureText(title).width;
+
+  // Ширина canvas = максимум из (ширина карты) и (ширина заголовка + отступы)
+  const mapW = cx * cellSize + pad * 2;
+  const W = Math.max(mapW, titleW + pad * 2);
+  const H = cy * cellSize + pad * 2 + 40;
+  canvas.width = W;
+  canvas.height = H;
+  const maxDisp = 1100;
+  const scale = Math.min(1, maxDisp / W);
+  canvas.style.width = (W * scale) + 'px';
+  const ctx = canvas.getContext('2d');
+
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0, 0, W, H);
+
+  // Заголовок
+  ctx.fillStyle = '#4ec9b0';
+  ctx.font = 'bold 20px sans-serif';
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillText(title, pad, 12);
+
+  // Карта: где какой кабинет (для номера и цвета порта)
+  const cellInfo = {};  // "x,y" -> {port, seq}
+  lines.forEach((line, li) => {
+    line.forEach((cell, si) => {
+      cellInfo[cell.x + ',' + cell.y] = { port: li, seq: si, total: line.length };
+    });
+  });
+
+  const ox = pad, oy = pad + 40;
+
+  // Рисуем клетки кабинетов
+  for (let y = 0; y < cy; y++) {
+    for (let x = 0; x < cx; x++) {
+      const info = cellInfo[x + ',' + y];
+      const px = ox + x * cellSize;
+      const py = oy + y * cellSize;
+      const color = info ? PORT_COLORS[info.port % PORT_COLORS.length] : '#333';
+      ctx.fillStyle = color;
+      ctx.fillRect(px + 2, py + 2, cellSize - 4, cellSize - 4);
+      ctx.strokeStyle = '#111';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(px + 2, py + 2, cellSize - 4, cellSize - 4);
+      // номер в линии
+      if (info) {
+        ctx.fillStyle = 'rgba(0,0,0,0.75)';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText((info.seq + 1), px + cellSize/2, py + cellSize/2);
+      }
+    }
+  }
+
+  // Рисуем линии кабеля (путь внутри каждого порта) со стрелками
+  lines.forEach((line, li) => {
+    const color = PORT_COLORS[li % PORT_COLORS.length];
+    ctx.strokeStyle = '#000';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    line.forEach((cell, si) => {
+      const px = ox + cell.x * cellSize + cellSize/2;
+      const py = oy + cell.y * cellSize + cellSize/2;
+      if (si === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+    // цветная линия поверх чёрной
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    line.forEach((cell, si) => {
+      const px = ox + cell.x * cellSize + cellSize/2;
+      const py = oy + cell.y * cellSize + cellSize/2;
+      if (si === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+
+    // Стрелка направления в конце линии
+    if (line.length >= 2) {
+      const a = line[line.length - 2], b2 = line[line.length - 1];
+      const ax = ox + a.x*cellSize + cellSize/2, ay = oy + a.y*cellSize + cellSize/2;
+      const bx = ox + b2.x*cellSize + cellSize/2, by = oy + b2.y*cellSize + cellSize/2;
+      drawArrow(ctx, ax, ay, bx, by, color);
+    }
+    // Метка старта линии (кружок с номером порта)
+    const st = line[0];
+    const sx = ox + st.x*cellSize + cellSize/2, sy = oy + st.y*cellSize + cellSize/2;
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(sx, sy, 11, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = color;
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('P' + (li + 1), sx, sy);
+  });
+}
+
+// Стрелка на конце линии
+function drawArrow(ctx, fromX, fromY, toX, toY, color) {
+  const angle = Math.atan2(toY - fromY, toX - fromX);
+  const size = 12;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(toX, toY);
+  ctx.lineTo(toX - size*Math.cos(angle - 0.4), toY - size*Math.sin(angle - 0.4));
+  ctx.lineTo(toX - size*Math.cos(angle + 0.4), toY - size*Math.sin(angle + 0.4));
+  ctx.closePath();
+  ctx.fill();
+}
+
+// Сохранить карту PNG
+function engSavePNG() {
+  const canvas = getEl('engCanvas');
+  const link = document.createElement('a');
+  link.download = `raskluchenie_${engCabType}_${getEl('engCX').value}x${getEl('engCY').value}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
 // ─── Определяем: это перезагрузка (F5) или новое открытие вкладки? ───────────
+// ⚠️ ЭТОТ БЛОК ДОЛЖЕН БЫТЬ ЗДЕСЬ — после объявления CAB_TYPES и ENG_SESSION_KEY!
 const isReload = sessionStorage.getItem('ledAlive') === '1';
 
 if (isReload) {
-  loadSession();   // F5 → восстанавливаем
+  loadSession();      // F5 → восстанавливаем визуализацию
+  loadEngSession();   // F5 → восстанавливаем инженерку
 } else {
-  localStorage.removeItem(SESSION_KEY);   // новое открытие → сброс
+  localStorage.removeItem(SESSION_KEY);      // новое открытие → сброс
+  localStorage.removeItem(ENG_SESSION_KEY);  // сброс инженерки
 }
 sessionStorage.setItem('ledAlive', '1');
 
+// ─── Финальная инициализация интерфейса ─────────────────────────────────────
 renderPresetButtons();
+renderDirButtons();
 writeScreenToForm();
 renderTabs();
 makeCollapsible();
+engToggleStartEdge();   // показать/скрыть выбор края по состоянию галочки
 generate();
 </script>
 </body>
