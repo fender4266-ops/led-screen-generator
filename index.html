@@ -256,13 +256,28 @@
   </div>
   <div id="input-direct" style="display:none;">
     <div class="row" style="margin-top:12px;">
-      <label>Ширина экрана (px)<input type="number" id="dirW" value="520"></label>
-      <label>Высота экрана (px)<input type="number" id="dirH" value="430"></label>
+      <label>📺 Готовое разрешение 
+        <select id="dirPreset" onchange="applyResPreset(this.value)">
+          <option value="">— выбрать —</option>
+          <option value="1280x720">HD · 1280×720</option>
+          <option value="1920x1080">Full HD · 1920×1080</option>
+          <option value="2560x1440">2K (QHD) · 2560×1440</option>
+          <option value="2048x1080">2K (DCI) · 2048×1080</option>
+          <option value="3840x2160">4K (UHD) · 3840×2160</option>
+          <option value="4096x2160">4K (DCI) · 4096×2160</option>
+          <option value="5120x2880">5K · 5120×2880</option>
+          <option value="7680x4320">8K (UHD) · 7680×4320</option>
+        </select>
+      </label>
+    </div>
+    <div class="row" style="margin-top:12px;">
+      <label>Ширина экрана (px)<input type="number" id="dirW" value="1920"></label>
+      <label>Высота экрана (px)<input type="number" id="dirH" value="1080"></label>
     </div>
     <div class="row" style="margin-top:12px;">
       <label>Физ. ширина (м)<input type="number" id="dirPhysW" value="0" step="0.1"></label>
       <label>Физ. высота (м)<input type="number" id="dirPhysH" value="0" step="0.1"></label>
-      <label>Клетка шахматки (px)<input type="number" id="dirCell" value="96"></label>
+      <label>Клетка шахматки (px)<input type="number" id="dirCell" value="120"></label>      
     </div>
   </div>
 </div>
@@ -499,6 +514,47 @@
       </label>
     </div>
 
+          <div class="row" style="margin-top:14px;">
+      <label class="checkbox">
+        <input type="checkbox" id="engRectMode" onchange="engCalc()">
+        ⬛ Разбивать прямоугольными зонами (квадратами)
+      </label>
+    </div>
+
+    <div class="row" id="rectInfoRow" style="margin-top:8px; display:none;">
+      <span style="font-size:13px; color:#f0a500;" id="rectInfo"></span>
+    </div>
+
+    
+    <div class="row" style="margin-top:14px; padding-top:14px; border-top:1px solid #444;">
+      <span style="font-size:13px; color:#4ec9b0; font-weight:bold;">⚖️ Подвес / лебёдки:</span>
+    </div>
+        <div class="row" style="margin-top:10px;">
+      <label>Грузоподъём. лебёдки (кг)
+        <select id="engHoistCap" onchange="engCalc()">
+          <option value="250">250 кг</option>
+          <option value="500">500 кг</option>
+          <option value="1000">1000 кг</option>
+          <option value="2000">2000 кг</option>
+        </select>
+      </label>
+      <label>Запас прочности (%)
+        <input type="number" id="engHoistReserve" value="20" step="5" oninput="engCalc()">
+      </label>
+      <label>Вес коммутации (%)
+        <input type="number" id="engRigExtra" value="10" step="5" oninput="engCalc()">
+      </label>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <label>Вес 1 кабинета (кг)
+        <input type="number" id="engCabWeight" value="9.2" step="0.1" oninput="engCalc()">
+      </label>
+      <label class="checkbox" style="align-self:flex-end;">
+        <input type="checkbox" id="engAutoWeight" checked onchange="engSyncCabWeight()">
+        🔄 Авто (по типу кабинета)
+      </label>
+    </div>
+
       <div class="row" id="startEdgeRow" style="margin-top:10px; display:none;">
       <label>Край старта портов:
         <select id="engStartEdge" onchange="engCalc()">
@@ -518,10 +574,16 @@
     <div class="info" id="engResult" style="line-height:1.9;">—</div>
   </div>
 
-  <!-- КАРТА -->
+    <!-- КАРТА -->
   <div class="panel">
     <h4>🗺️ Карта расключения</h4>
     <div class="row">
+      <label class="checkbox">
+        <input type="checkbox" id="engMapSpecs" checked onchange="engCalc()">
+        📄 Вывести вес и мощность на карту
+      </label>
+    </div>
+    <div class="row" style="margin-top:10px;">
       <button onclick="engSavePNG()" style="background:#8a2be2;">💾 Сохранить карту PNG</button>
     </div>
     <canvas id="engCanvas" style="border:1px solid #444; max-width:100%; margin-top:12px; background:#111;"></canvas>
@@ -555,7 +617,7 @@ function defaultScreen(name, x, y) {
     inputMode:'cab', mode:'checker',
     fields:{
       screenName:name, physW:5, physH:2.5, cabPhys:0.5, cabPxW:192, cabPxH:192,
-      dirW:520, dirH:430, dirPhysW:0, dirPhysH:0, dirCell:96,
+      dirW:520, dirH:430, dirPhysW:0, dirPhysH:0, dirCell:120,    // размер клетки по умолчаниюю
       col1:'#ffffff', col2:'#000000', gradDir:'h', gradA:'#000000', gradB:'#ffffff',
       showCross:false, crossColor:'#ff0000', crossLW:4, circlePct:50,
       txtName:true, txtRes:true, txtSize:false, txtColor:'#ffff00', txtSizePct:40,
@@ -947,6 +1009,22 @@ function setInput(m) {
   applyInputButtons();
   generate();
 }
+
+
+// ─── 📺 Применить готовое разрешение (HD/FullHD/2K/4K/8K) ───────────────────
+function applyResPreset(val) {
+  if (!val) return;                       // "— выбрать —"
+  const [w, h] = val.split('x').map(Number);
+  if (!w || !h) return;
+  getEl('dirW').value = w;
+  getEl('dirH').value = h;
+  const s = screens[activeId];
+  s.fields.dirW = w;
+  s.fields.dirH = h;
+  generate();
+}
+
+
 function setMode(m) {
   mode = m;
   screens[activeId].mode = m;
@@ -966,7 +1044,7 @@ function getScreenSize(s) {
     return { w: cx * cabPxW, h: cy * cabPxH, cabsX: cx, cabsY: cy, cabPxW, cabPxH, physW, physH };
   } else {
     const w = parseInt(f.dirW), h = parseInt(f.dirH);
-    const cell = parseInt(f.dirCell) || 96;
+    const cell = parseInt(f.dirCell) || 120;
     return {
       w, h,
       cabsX: Math.ceil(w / cell), cabsY: Math.ceil(h / cell),
@@ -1806,20 +1884,44 @@ function syncEngineerToVisual() {
 
 // Данные кабинетов: разрешение + лимит на линию
 const CAB_TYPES = {
-  'P3.9': { px:128, perLine:40 },
-  'P2.9': { px:168, perLine:20 },
-  'P2.6': { px:192, perLine:15 },
-  'P1.9': { px:256, perLine:8  }
+  'P3.9': { px:128, perLine:40, weight:9.2, power:140 },   // 3.9 → 140 Вт
+  'P2.9': { px:168, perLine:20, weight:8.5, power:120 },   // 2.9 → 120 Вт
+  'P2.6': { px:192, perLine:15, weight:9.2, power:140 },   // 2.6 → 140 Вт
+  'P1.9': { px:256, perLine:8,  weight:9.2, power:160 }    // 1.9 → 160 Вт
 };
 
 // Процессоры Novastar. ports = ВСЕГО портов, реально master = ports/2 (backup!)
 const PROCESSORS = [
-  { name:'Novastar VX400',        maxPx:2600000,  ports:4,  pxPerPort:650000 },
-  { name:'Novastar VX600',        maxPx:3900000,  ports:6,  pxPerPort:650000 },
-  { name:'Novastar VX1000',       maxPx:6500000,  ports:10, pxPerPort:650000 },
-  { name:'Novastar MCTRL4K',      maxPx:8800000,  ports:16, pxPerPort:550000 },
-  { name:'Novastar VX2000',       maxPx:13000000, ports:20, pxPerPort:650000 },
-  { name:'Novastar VX2000 + 4×CWT',maxPx:13000000,ports:40, pxPerPort:650000 }
+  {
+    name:'Novastar VX400', maxPx:2600000, ports:4, pxPerPort:650000,
+    maxInput:'3840×2160 @60Hz', hdmiSync:false, video:'HDMI 1.4, DVI',
+    audio:true, redundancy:'HDMI/DVI backup', note:'Компактный, до 4 портов'
+  },
+  {
+    name:'Novastar VX600', maxPx:3900000, ports:6, pxPerPort:650000,
+    maxInput:'3840×2160 @60Hz', hdmiSync:false, video:'HDMI 1.4, DVI',
+    audio:true, redundancy:'HDMI/DVI backup', note:'6 портов, средние экраны'
+  },
+  {
+    name:'Novastar VX1000', maxPx:6500000, ports:10, pxPerPort:650000,
+    maxInput:'3840×2160 @60Hz', hdmiSync:false, video:'HDMI 2.0, DVI',
+    audio:true, redundancy:'Hot backup', note:'10 портов, популярный'
+  },
+  {
+    name:'Novastar MCTRL4K', maxPx:8800000, ports:16, pxPerPort:550000,
+    maxInput:'4096×2160 @60Hz', hdmiSync:false, video:'HDMI 2.0, DP 1.1, DVI×2',
+    audio:false, redundancy:'Нет', note:'4K вход, 16 портов'
+  },
+  {
+    name:'Novastar VX2000', maxPx:13000000, ports:20, pxPerPort:650000,
+    maxInput:'4096×2160 @60Hz', hdmiSync:true, video:'HDMI 2.0, DP 1.2, 3G-SDI',
+    audio:true, redundancy:'Hot backup', note:'20 портов, крупные экраны'
+  },
+  {
+    name:'Novastar VX2000 + 4×CWT', maxPx:13000000, ports:40, pxPerPort:650000,
+    maxInput:'4096×2160 @60Hz', hdmiSync:true, video:'HDMI 2.0, DP 1.2, 3G-SDI',
+    audio:true, redundancy:'Hot backup', note:'40 портов (доп. CWT-боксы)'
+  }
 ];
 
 const CAB_SIZE_M = 0.5;   // все кабинеты 0.5×0.5 м
@@ -1838,7 +1940,10 @@ function saveEngSession() {
       mh: getEl('engMH').value,
       dir: getEl('engDir').value,
       sameStart: getEl('engPortsSameStart').checked,
-      startEdge: getEl('engStartEdge') ? getEl('engStartEdge').value : 'top'
+      startEdge: getEl('engStartEdge') ? getEl('engStartEdge').value : 'top',
+      rectMode: getEl('engRectMode') ? getEl('engRectMode').checked : false,
+      hoistCap: getEl('engHoistCap') ? getEl('engHoistCap').value : '250',
+      mapSpecs: getEl('engMapSpecs') ? getEl('engMapSpecs').checked : true
     };
     localStorage.setItem(ENG_SESSION_KEY, JSON.stringify(data));
   } catch (e) { console.warn('Не удалось сохранить инженерную сессию:', e); }
@@ -1863,6 +1968,9 @@ function loadEngSession() {
     if (d.dir) getEl('engDir').value = d.dir;
     if (d.sameStart !== undefined) getEl('engPortsSameStart').checked = d.sameStart;
     if (d.startEdge && getEl('engStartEdge')) getEl('engStartEdge').value = d.startEdge;
+    if (d.rectMode !== undefined && getEl('engRectMode')) getEl('engRectMode').checked = d.rectMode;
+    if (d.hoistCap && getEl('engHoistCap')) getEl('engHoistCap').value = d.hoistCap;
+    if (d.mapSpecs !== undefined && getEl('engMapSpecs')) getEl('engMapSpecs').checked = d.mapSpecs;
     return true;
   } catch (e) {
     console.warn('Не удалось загрузить инженерную сессию:', e);
@@ -1875,7 +1983,23 @@ function engSetCab(type) {
   engCabType = type;
   document.querySelectorAll('.cabtype-btn').forEach(b =>
     b.classList.toggle('active', b.dataset.cab === type));
+  engSyncCabWeight();     // ← обновляем вес кабинета
   engFromMeters();
+}
+
+// Подставить вес кабинета из справочника (если включено «Авто»)
+function engSyncCabWeight() {
+  const auto = getEl('engAutoWeight');
+  const wEl  = getEl('engCabWeight');
+  if (!wEl) return;
+  if (auto && auto.checked) {
+    const cab = CAB_TYPES[engCabType];
+    if (cab && cab.weight) wEl.value = cab.weight;
+    wEl.disabled = true;      // блокируем ручной ввод в авто-режиме
+  } else {
+    wEl.disabled = false;
+  }
+  if (typeof engCalc === 'function') engCalc();
 }
 
 // Метры → кабинеты
@@ -1910,7 +2034,7 @@ function engCalc() {
   const resW = cx * cab.px, resH = cy * cab.px;
 
   const dir = parseInt(getEl('engDir').value);
-  const snake = buildSnake(cx, cy, cab.perLine, dir);
+  const snake = buildSnake(cx, cy, cab.perLine, dir);   // ← вот этой строки не хватало!
   const lines = snake.lines;
   const numLines = lines.length;
 
@@ -1941,12 +2065,36 @@ function engCalc() {
   html += `🔢 Кабинетов: <b>${totalCabs}</b> &nbsp;|&nbsp; Приёмных карт: <b>${totalCabs}</b><br>`;
   html += `🖼️ Пикселей: <b>${totalPx.toLocaleString('ru')}</b><br>`;
   html += `<hr style="border-color:#444;">`;
-  // Правило 2 — сообщение о разбивке
-  if (snake.unitsPerLine >= 1) {
-    const unitName = (dir===2||dir===4||dir===6||dir===8) ? 'строк' : 'колонн';
-    html += `🔗 Линия = <b>${snake.effPerLine}</b> каб (${snake.unitsPerLine} целых ${unitName} × ${snake.unitLen}) — колонна не рвётся ✅<br>`;
+   // Режим зон / обычный
+  const rectModeOn = getEl('engRectMode') && getEl('engRectMode').checked;
+  const rectRow = getEl('rectInfoRow');
+
+    if (rectModeOn && snake.tiling) {
+    const t = snake.tiling;
+    // формируем строку "какие зоны и сколько"
+    const parts = Object.entries(t.sizes)
+      .sort((a,b) => {
+        const [aw,ah]=a[0].split('×').map(Number), [bw,bh]=b[0].split('×').map(Number);
+        return (bw*bh)-(aw*ah);   // от крупных к мелким
+      })
+      .map(([size, cnt]) => `<b>${size}</b>×${cnt}`);
+    html += `⬛ Зоны: ${parts.join(' &nbsp;+&nbsp; ')} &nbsp;|&nbsp; Всего портов: <b>${t.zoneCount}</b> ✅<br>`;
+    if (rectRow) {
+      rectRow.style.display = 'flex';
+      const human = Object.entries(t.sizes)
+        .map(([size, cnt]) => `${cnt}× зона ${size} каб`)
+        .join(', ');
+      getEl('rectInfo').textContent = `Экран нарезан на ${t.zoneCount} зон: ${human}`;
+    }
   } else {
-    html += `🔗 Линия = <b>${snake.effPerLine}</b> каб &nbsp;<span style="color:#ffa500;">⚠️ колонна длиннее лимита — вынужденный разрыв</span><br>`;
+    if (rectRow) rectRow.style.display = 'none';
+    // Правило 2 — сообщение о разбивке
+    if (snake.unitsPerLine >= 1) {
+      const unitName = (dir===2||dir===4||dir===6||dir===8) ? 'строк' : 'колонн';
+      html += `🔗 Линия = <b>${snake.effPerLine}</b> каб (${snake.unitsPerLine} целых ${unitName} × ${snake.unitLen}) — колонна не рвётся ✅<br>`;
+    } else {
+      html += `🔗 Линия = <b>${snake.effPerLine}</b> каб &nbsp;<span style="color:#ffa500;">⚠️ колонна длиннее лимита — вынужденный разрыв</span><br>`;
+    }
   }
   html += `🔌 Рабочих линий (master): <b>${numLines}</b> &nbsp;<span style="font-size:12px;color:#999;">+${numLines} backup</span><br>`;
   html += `<hr style="border-color:#444;">`;
@@ -1959,128 +2107,407 @@ function engCalc() {
     html += `🖥️ Нужно: <b style="color:#4ec9b0;">${chosen.name} × ${needCount} шт</b><br>`;
     html += `<span style="font-size:12px;color:#999;">Каждый: ${master} master портов · Всего линий: ${numLines}</span>`;
   }
-    getEl('engResult').innerHTML = html;
 
-  engDrawMap(cx, cy, cab, lines, resW, resH);
+  // ─── 📋 Карточка характеристик процессора ───────────────────────────────
+  html += buildProcSpecCard(chosen, totalPx);
+
+  // ─── ⚡ Карточка потребляемой мощности ───────────────────────────────────
+  html += buildPowerCard(totalCabs, cab, cx, cy);
+
+  // ─── ⚖️ Карточка веса и лебёдок ──────────────────────────────────────────
+  html += buildWeightCard(totalCabs);
+
+  getEl('engResult').innerHTML = html;  
+
+  engDrawMap(cx, cy, cab, lines, resW, resH, {
+    proc: chosen, needCount, totalCabs, totalPx
+  });
   saveEngSession();   // 💾 автосохранение инженерных настроек
 }
 
 
-// ─── Построение змейки с учётом "не рвать колонну" (правило 2) ──────────────
-function buildSnake(cx, cy, perLine, dir) {
-  const vertical = (dir === 1 || dir === 3 || dir === 5 || dir === 7);
+// ─── 📋 Карточка технических характеристик процессора ───────────────────────
+function buildProcSpecCard(p, totalPx) {
+  const yes = '<span style="color:#2ecc71;">✅ Да</span>';
+  const no  = '<span style="color:#ff6b6b;">❌ Нет</span>';
+  const loadPct = Math.round(totalPx / p.maxPx * 100);
+  const loadColor = loadPct > 90 ? '#ff6b6b' : loadPct > 70 ? '#f0a500' : '#2ecc71';
 
-  // Если включён режим "с одного края" — тип разводки берём от выбранного края
-  const sameStartCheck = getEl('engPortsSameStart') && getEl('engPortsSameStart').checked;
-  const edgeElCheck = getEl('engStartEdge');
-  let effVertical = vertical;
-  if (sameStartCheck && edgeElCheck) {
-    effVertical = (edgeElCheck.value === 'top' || edgeElCheck.value === 'bottom');
+  let c = `<div style="margin-top:14px; background:#20303a; border:1px solid #2a5060; border-radius:8px; padding:14px;">`;
+  c += `<div style="color:#4ec9b0; font-weight:bold; font-size:15px; margin-bottom:10px;">📋 Характеристики: ${p.name}</div>`;
+
+  c += `<table style="width:100%; border-collapse:collapse; font-size:13px; line-height:1.7;">`;
+
+  const row = (label, val) =>
+    `<tr>
+       <td style="padding:4px 10px 4px 0; color:#9db; white-space:nowrap; vertical-align:top;">${label}</td>
+       <td style="padding:4px 0; color:#fff;">${val}</td>
+     </tr>`;
+
+  c += row('🖼️ Макс. пикселей', `<b>${p.maxPx.toLocaleString('ru')}</b> px`);
+  c += row('📥 Макс. вход', `<b>${p.maxInput}</b>`);
+  c += row('🔌 Портов', `<b>${p.ports}</b> (${p.ports/2} master + ${p.ports/2} backup)`);
+  c += row('📊 Пикс/порт', `<b>${p.pxPerPort.toLocaleString('ru')}</b> px`);
+  c += row('🎬 Видеовходы', p.video || '—');
+  c += row('🔗 Синхр. по HDMI', p.hdmiSync ? yes : no);
+  c += row('🔊 Аудио', p.audio ? yes : no);
+  c += row('♻️ Резервирование', p.redundancy || '—');
+
+  // Полоса загрузки
+  c += row('⚙️ Загрузка процессора',
+    `<div style="display:flex; align-items:center; gap:8px;">
+       <div style="flex:1; max-width:200px; height:14px; background:#111; border-radius:7px; overflow:hidden; border:1px solid #444;">
+         <div style="width:${Math.min(100,loadPct)}%; height:100%; background:${loadColor};"></div>
+       </div>
+       <b style="color:${loadColor};">${loadPct}%</b>
+     </div>`);
+
+  c += `</table>`;
+
+  if (p.note) {
+    c += `<div style="margin-top:10px; font-size:12px; color:#f0a500;">💡 ${p.note}</div>`;
   }
 
-  // ПРАВИЛО 2: сколько ЦЕЛЫХ колонн (строк) влезает в лимит
-  let unitLen = effVertical ? cy : cx;
-  let unitsPerLine = Math.floor(perLine / unitLen);
+  c += `</div>`;
+  return c;
+}
 
-  let effPerLine;
-  if (unitsPerLine >= 1) {
-    effPerLine = unitsPerLine * unitLen;
+
+// ─── ⚖️ Карточка расчёта веса экрана и количества лебёдок ───────────────────
+function buildWeightCard(totalCabs) {
+  const cabW    = parseFloat(getEl('engCabWeight').value) || 0;
+  const extra   = parseFloat(getEl('engRigExtra').value) || 0;      // % коммутации
+  const reserve = parseFloat(getEl('engHoistReserve').value) || 0;  // % запаса
+  const hoistCap= parseFloat(getEl('engHoistCap').value) || 0;      // кг на лебёдку
+
+  const netWeight   = totalCabs * cabW;                    // чистый вес кабинетов
+  const rigWeight   = netWeight * (1 + extra/100);         // + коммутация
+  const calcWeight  = rigWeight * (1 + reserve/100);       // + запас для лебёдок
+
+  const hoists = hoistCap > 0 ? Math.ceil(calcWeight / hoistCap) : 0;
+  const perHoist = hoists > 0 ? rigWeight / hoists : 0;    // фактич. нагрузка на 1 лебёдку
+
+  const row = (label, val, hint) =>
+    `<tr>
+       <td style="padding:4px 10px 4px 0; color:#9db; white-space:nowrap; vertical-align:top;">${label}</td>
+       <td style="padding:4px 0; color:#fff;">${val}${hint?`<span style="color:#777; font-size:11px;"> ${hint}</span>`:''}</td>
+     </tr>`;
+
+  let c = `<div style="margin-top:14px; background:#2a2410; border:1px solid #5a4a1a; border-radius:8px; padding:14px;">`;
+  c += `<div style="color:#f0a500; font-weight:bold; font-size:15px; margin-bottom:10px;">⚖️ Вес экрана и подвес</div>`;
+  c += `<table style="width:100%; border-collapse:collapse; font-size:13px; line-height:1.7;">`;
+
+  c += row('📦 Кабинетов', `<b>${totalCabs}</b> шт × ${cabW} кг`);
+  c += row('🏗️ Чистый вес', `<b>${netWeight.toFixed(1)} кг</b>`, '(только кабинеты)');
+  c += row(`🔌 + Коммутация (${extra}%)`, `<b style="color:#4ec9b0;">${rigWeight.toFixed(1)} кг</b>`, '(вес в сборе)');
+  c += row(`🛡️ + Запас (${reserve}%)`, `<b style="color:#f0a500;">${calcWeight.toFixed(1)} кг</b>`, '(расчётный для лебёдок)');
+
+  c += `</table>`;
+
+  // ─── Блок лебёдок ───
+  c += `<div style="margin-top:12px; padding-top:12px; border-top:1px solid #5a4a1a;">`;
+  if (hoistCap > 0) {
+    const loadPct = Math.round(perHoist / hoistCap * 100);
+    const loadColor = loadPct > 90 ? '#ff6b6b' : loadPct > 75 ? '#f0a500' : '#2ecc71';
+
+    c += `<div style="font-size:14px; margin-bottom:8px;">`;
+    c += `🏗️ Нужно лебёдок: <b style="color:#f0a500; font-size:20px;">${hoists} шт</b> `;
+    c += `<span style="color:#777; font-size:12px;">(по ${hoistCap} кг каждая)</span>`;
+    c += `</div>`;
+
+    c += `<table style="width:100%; border-collapse:collapse; font-size:13px; line-height:1.7;">`;
+    c += row('⚙️ Нагрузка на лебёдку', `<b style="color:${loadColor};">${perHoist.toFixed(1)} кг</b>`, `(${loadPct}% от лимита)`);
+
+    // полоса загрузки лебёдки
+    c += row('📊 Загрузка лебёдки',
+      `<div style="display:flex; align-items:center; gap:8px;">
+         <div style="flex:1; max-width:200px; height:14px; background:#111; border-radius:7px; overflow:hidden; border:1px solid #444;">
+           <div style="width:${Math.min(100,loadPct)}%; height:100%; background:${loadColor};"></div>
+         </div>
+         <b style="color:${loadColor};">${loadPct}%</b>
+       </div>`);
+    c += `</table>`;
+
+    if (loadPct > 90) {
+      c += `<div style="margin-top:8px; font-size:12px; color:#ff6b6b;">⚠️ Лебёдки почти на пределе — добавь ещё одну или возьми грузоподъёмнее!</div>`;
+    }
   } else {
-    effPerLine = perLine;
+    c += `<div style="color:#ff6b6b; font-size:13px;">⚠️ Укажи грузоподъёмность лебёдки</div>`;
+  }
+  c += `</div>`;
+
+  c += `</div>`;
+  return c;
+}
+
+
+// ─── ⚡ Карточка расчёта потребляемой мощности ──────────────────────────────
+function buildPowerCard(totalCabs, cab, cx, cy) {
+  const perCab = cab.power || 0;                    // Вт на 1 кабинет (макс.)
+  const maxW = totalCabs * perCab;                  // пиковая мощность (все белые)
+  const avgW = maxW * 0.35;                         // средняя (обычно ~35% от пика)
+  const maxKW = maxW / 1000;
+  const avgKW = avgW / 1000;
+
+  // Площадь экрана (м²)
+  const areaM2 = (cx * CAB_SIZE_M) * (cy * CAB_SIZE_M);
+  const wPerM2 = areaM2 > 0 ? Math.round(maxW / areaM2) : 0;
+
+  // Ток при 220В (однофазн.) и распределение по 3 фазам (380В)
+  const ampsMax = maxW / 220;                       // пиковый ток 1 фаза
+  const amps3ph = maxW / (220 * 3);                 // при равномерном распределении на 3 фазы
+
+  // Рекомендация по автомату (с запасом 1.25)
+  const breaker1ph = Math.ceil(ampsMax * 1.25 / 5) * 5;   // округляем до 5А
+  const breaker3ph = Math.ceil(amps3ph * 1.25 / 5) * 5;
+
+  const row = (label, val, hint) =>
+    `<tr>
+       <td style="padding:4px 10px 4px 0; color:#9db; white-space:nowrap; vertical-align:top;">${label}</td>
+       <td style="padding:4px 0; color:#fff;">${val}${hint?`<span style="color:#777; font-size:11px;"> ${hint}</span>`:''}</td>
+     </tr>`;
+
+  let c = `<div style="margin-top:14px; background:#1a2a1a; border:1px solid #2a5a2a; border-radius:8px; padding:14px;">`;
+  c += `<div style="color:#2ecc71; font-weight:bold; font-size:15px; margin-bottom:10px;">⚡ Потребляемая мощность</div>`;
+  c += `<table style="width:100%; border-collapse:collapse; font-size:13px; line-height:1.7;">`;
+
+  c += row('📦 Кабинетов', `<b>${totalCabs}</b> шт × ${perCab} Вт`);
+  c += row('🔥 Пиковая (макс.)', `<b style="color:#ff6b6b;">${maxW.toLocaleString('ru')} Вт</b> = <b>${maxKW.toFixed(1)} кВт</b>`, '(белое поле 100%)');
+  c += row('📊 Средняя (~35%)', `<b style="color:#2ecc71;">${Math.round(avgW).toLocaleString('ru')} Вт</b> = <b>${avgKW.toFixed(1)} кВт</b>`, '(обычный контент)');
+  c += row('📐 На м²', `<b>${wPerM2}</b> Вт/м²`, `(площадь ${areaM2.toFixed(1)} м²)`);
+
+  c += `</table>`;
+
+  // ─── Блок электрики ───
+  c += `<div style="margin-top:12px; padding-top:12px; border-top:1px solid #2a5a2a;">`;
+  c += `<div style="color:#f0a500; font-weight:bold; font-size:13px; margin-bottom:8px;">🔌 Электропитание (пик)</div>`;
+  c += `<table style="width:100%; border-collapse:collapse; font-size:13px; line-height:1.7;">`;
+  c += row('⚡ Ток 1 фаза (220В)', `<b>${ampsMax.toFixed(1)} A</b>`, `→ автомат ~${breaker1ph}A`);
+  c += row('⚡ Ток 3 фазы (380В)', `<b>${amps3ph.toFixed(1)} A</b>`, `на фазу → ~${breaker3ph}A/фазу`);
+  c += `</table>`;
+  c += `</div>`;
+
+  c += `<div style="margin-top:10px; font-size:12px; color:#f0a500;">💡 Пик — для расчёта кабеля/автоматов. Средняя — для реального потребления.</div>`;
+
+  c += `</div>`;
+  return c;
+}
+// ─── 🔲 УМНАЯ ПРЯМОУГОЛЬНАЯ НАРЕЗКА (квадраты + остаток) ─────────────────────
+// Режем поле cx×cy жадно: сначала крупные квадратные зоны, потом остаток.
+// Каждая зона ≤ perLine.
+
+function bestZoneForArea(w, h, perLine) {
+  let best = null;
+  for (let zw = 1; zw <= w; zw++) {
+    for (let zh = 1; zh <= h; zh++) {
+      const area = zw * zh;
+      if (area > perLine) continue;
+      const aspectDiff = Math.abs(zw - zh);
+      const cand = { zw, zh, area, aspectDiff };
+      if (!best) { best = cand; continue; }
+      if (cand.area > best.area) best = cand;
+      else if (cand.area === best.area && cand.aspectDiff < best.aspectDiff) best = cand;
+    }
+  }
+  return best;
+}
+
+function findRectTiling(cx, cy, perLine) {
+  const occupied = Array.from({length: cy}, () => Array(cx).fill(false));
+  const zones = [];
+
+  for (let y = 0; y < cy; y++) {
+    for (let x = 0; x < cx; x++) {
+      if (occupied[y][x]) continue;
+
+      let maxW = 0;
+      while (x + maxW < cx && !occupied[y][x + maxW]) maxW++;
+      let maxH = 0;
+      while (y + maxH < cy && !occupied[y + maxH][x]) maxH++;
+
+      const best = bestZoneForArea(maxW, maxH, perLine);
+      if (!best) { occupied[y][x] = true; continue; }
+
+      let { zw, zh } = best;
+
+      let ok = false;
+      while (!ok && zw >= 1 && zh >= 1) {
+        ok = true;
+        for (let dy = 0; dy < zh && ok; dy++) {
+          for (let dx = 0; dx < zw && ok; dx++) {
+            if (y + dy >= cy || x + dx >= cx || occupied[y + dy][x + dx]) ok = false;
+          }
+        }
+        if (!ok) { if (zw >= zh) zw--; else zh--; }
+      }
+      if (!ok || zw < 1 || zh < 1) { occupied[y][x] = true; continue; }
+
+      for (let dy = 0; dy < zh; dy++)
+        for (let dx = 0; dx < zw; dx++)
+          occupied[y + dy][x + dx] = true;
+
+      zones.push({ x0: x, y0: y, zw, zh });
+    }
   }
 
-  // Режим "каждый порт с одного края"
-  const sameStart = sameStartCheck;
+  if (!zones.length) return null;
 
-  // ═══════════════════════════════════════════════════════════
-  // РЕЖИМ А: каждый порт независимо стартует с ВЫБРАННОГО края
-  // ═══════════════════════════════════════════════════════════
-  if (sameStart && unitsPerLine >= 1) {
-    const edgeEl = getEl('engStartEdge');
-    const edge = edgeEl ? edgeEl.value : 'top';    // top/bottom/left/right
-    const lines = [];
+  const sizes = {};
+  zones.forEach(z => {
+    const key = `${z.zw}×${z.zh}`;
+    sizes[key] = (sizes[key] || 0) + 1;
+  });
 
-    // Край определяет: вертикальная разводка (top/bottom) или горизонтальная (left/right)
-    const edgeVertical = (edge === 'top' || edge === 'bottom');
+  return { zones, zoneCount: zones.length, sizes };
+}
 
-    if (edgeVertical) {
-      // ── Порты = группы КОЛОНН, змейка идёт вертикально ──
-      // Первая колонна каждого порта стартует с выбранного края (top/bottom)
-      const startTop = (edge === 'top');
-      const colsOrder = [];
-      for (let i = 0; i < cx; i++) colsOrder.push(i);   // слева-направо
+function buildRectSnake(cx, cy, perLine) {
+  const tiling = findRectTiling(cx, cy, perLine);
+  if (!tiling) return null;
 
-      for (let g = 0; g < colsOrder.length; g += unitsPerLine) {
-        const group = colsOrder.slice(g, g + unitsPerLine);
-        const line = [];
-        group.forEach((col, idx) => {
-          // Первая колонна порта (idx 0) идёт ОТ выбранного края
-          const goingDown = startTop ? (idx % 2 === 0) : (idx % 2 === 1);
-          for (let r = 0; r < cy; r++) {
-            const row = goingDown ? r : cy - 1 - r;
-            line.push({ x: col, y: row });
-          }
-        });
-        lines.push(line);
+  const lines = [];
+  let maxArea = 0, maxW = 1, maxH = 1;
+
+  tiling.zones.forEach(z => {
+    const line = [];
+    for (let col = 0; col < z.zw; col++) {
+      const goingDown = (col % 2 === 0);
+      for (let r = 0; r < z.zh; r++) {
+        const row = goingDown ? r : z.zh - 1 - r;
+        line.push({ x: z.x0 + col, y: z.y0 + row });
       }
+    }
+    lines.push(line);
+    const a = z.zw * z.zh;
+    if (a > maxArea) { maxArea = a; maxW = z.zw; maxH = z.zh; }
+  });
+
+  return { lines, effPerLine: maxArea, unitLen: maxH, unitsPerLine: maxW, tiling };
+}
+
+
+// ─── 🐍 ОБЫЧНАЯ ЗМЕЙКА (по направлению разводки) ────────────────────────────
+function buildSnake(cx, cy, perLine, dir) {
+  // ═══ РЕЖИМ ПРЯМОУГОЛЬНЫХ ЗОН (приоритет) ═══
+  const rectModeEl = getEl('engRectMode');
+  if (rectModeEl && rectModeEl.checked) {
+    const rect = buildRectSnake(cx, cy, perLine);
+    if (rect) return rect;   // если нарезка найдена — используем её
+  }
+
+  const vertical = (dir === 1 || dir === 3 || dir === 5 || dir === 7);
+  const lines = [];
+
+  if (vertical) {
+    // Разводка колоннами (вертикальная змейка)
+    const leftToRight = (dir === 1 || dir === 5);
+    const downFirst   = (dir === 1 || dir === 3);
+
+    // Сколько целых колонн влезает в одну линию (по лимиту perLine)
+    const colsPerLine = Math.max(1, Math.floor(perLine / cy));
+    const unitLen = cy;                       // высота колонны
+    const unitsPerLine = (cy <= perLine) ? colsPerLine : 0;
+    const effPerLine = (cy <= perLine) ? colsPerLine * cy : perLine;
+
+    // порядок обхода колонн
+    const cols = [];
+    for (let i = 0; i < cx; i++) cols.push(leftToRight ? i : cx - 1 - i);
+
+    let current = [];
+    let colsInCurrent = 0;
+    let flip = 0;   // для змейки: чётная колонна вниз, нечётная вверх
+
+    const pushCol = (col) => {
+      const goingDown = downFirst ? (flip % 2 === 0) : (flip % 2 === 1);
+      for (let r = 0; r < cy; r++) {
+        const row = goingDown ? r : cy - 1 - r;
+        current.push({ x: col, y: row });
+      }
+      flip++;
+    };
+
+    if (cy <= perLine) {
+      // колонна целиком влезает — группируем по colsPerLine колонн в линию
+      cols.forEach(col => {
+        pushCol(col);
+        colsInCurrent++;
+        if (colsInCurrent >= colsPerLine) {
+          lines.push(current);
+          current = [];
+          colsInCurrent = 0;
+          flip = 0;
+        }
+      });
+      if (current.length) lines.push(current);
     } else {
-      // ── Порты = группы СТРОК, змейка идёт горизонтально ──
-      // Первая строка каждого порта стартует с выбранного края (left/right)
-      const startLeft = (edge === 'left');
-      const rowsOrder = [];
-      for (let i = 0; i < cy; i++) rowsOrder.push(i);   // сверху-вниз
+      // колонна ДЛИННЕЕ лимита — рвём вынужденно
+      cols.forEach(col => {
+        const goingDown = downFirst ? true : false;
+        let seg = [];
+        for (let r = 0; r < cy; r++) {
+          const row = goingDown ? r : cy - 1 - r;
+          seg.push({ x: col, y: row });
+          if (seg.length >= perLine) { lines.push(seg); seg = []; }
+        }
+        if (seg.length) lines.push(seg);
+      });
+    }
 
-      for (let g = 0; g < rowsOrder.length; g += unitsPerLine) {
-        const group = rowsOrder.slice(g, g + unitsPerLine);
-        const line = [];
-        group.forEach((row, idx) => {
-          const goingRight = startLeft ? (idx % 2 === 0) : (idx % 2 === 1);
-          for (let c = 0; c < cx; c++) {
-            const col = goingRight ? c : cx - 1 - c;
-            line.push({ x: row === row ? col : col, y: row });
-          }
-        });
-        lines.push(line);
+    return { lines, effPerLine, unitLen, unitsPerLine };
+
+  } else {
+    // Разводка строками (горизонтальная змейка)
+    const topToBottom      = (dir === 2 || dir === 4);
+    const leftToRightStart = (dir === 2 || dir === 6);
+
+    const rowsPerLine = Math.max(1, Math.floor(perLine / cx));
+    const unitLen = cx;                       // длина строки
+    const unitsPerLine = (cx <= perLine) ? rowsPerLine : 0;
+    const effPerLine = (cx <= perLine) ? rowsPerLine * cx : perLine;
+
+    const rows = [];
+    for (let i = 0; i < cy; i++) rows.push(topToBottom ? i : cy - 1 - i);
+
+    let current = [];
+    let rowsInCurrent = 0;
+    let flip = 0;
+
+    const pushRow = (row) => {
+      const goingRight = leftToRightStart ? (flip % 2 === 0) : (flip % 2 === 1);
+      for (let c = 0; c < cx; c++) {
+        const col = goingRight ? c : cx - 1 - c;
+        current.push({ x: col, y: row });
       }
+      flip++;
+    };
+
+    if (cx <= perLine) {
+      rows.forEach(row => {
+        pushRow(row);
+        rowsInCurrent++;
+        if (rowsInCurrent >= rowsPerLine) {
+          lines.push(current);
+          current = [];
+          rowsInCurrent = 0;
+          flip = 0;
+        }
+      });
+      if (current.length) lines.push(current);
+    } else {
+      rows.forEach(row => {
+        let seg = [];
+        for (let c = 0; c < cx; c++) {
+          seg.push({ x: c, y: row });
+          if (seg.length >= perLine) { lines.push(seg); seg = []; }
+        }
+        if (seg.length) lines.push(seg);
+      });
     }
 
     return { lines, effPerLine, unitLen, unitsPerLine };
   }
-
-  // ═══════════════════════════════════════════════════════════
-  // РЕЖИМ Б: непрерывная змейка (как было раньше)
-  // ═══════════════════════════════════════════════════════════
-  let order = [];
-  if (vertical) {
-    const leftToRight = (dir === 1 || dir === 5);
-    const cols = [];
-    for (let i = 0; i < cx; i++) cols.push(leftToRight ? i : cx - 1 - i);
-    let downFirst = (dir === 1 || dir === 3);
-    cols.forEach((col, idx) => {
-      const goingDown = downFirst ? (idx % 2 === 0) : (idx % 2 === 1);
-      const rows = [];
-      for (let r = 0; r < cy; r++) rows.push(goingDown ? r : cy - 1 - r);
-      rows.forEach(row => order.push({ x: col, y: row }));
-    });
-  } else {
-    const topToBottom = (dir === 2 || dir === 4);
-    const rows = [];
-    for (let i = 0; i < cy; i++) rows.push(topToBottom ? i : cy - 1 - i);
-    const leftToRightStart = (dir === 2 || dir === 6);
-    rows.forEach((row, idx) => {
-      const goingRight = leftToRightStart ? (idx % 2 === 0) : (idx % 2 === 1);
-      const cols = [];
-      for (let c = 0; c < cx; c++) cols.push(goingRight ? c : cx - 1 - c);
-      cols.forEach(col => order.push({ x: col, y: row }));
-    });
-  }
-
-  const lines = [];
-  for (let i = 0; i < order.length; i += effPerLine) {
-    lines.push(order.slice(i, i + effPerLine));
-  }
-  return { lines, effPerLine, unitLen, unitsPerLine };
 }
+
 // ─── Цвета для портов ────────────────────────────────────────────────────────
 const PORT_COLORS = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#1abc9c',
   '#3498db','#9b59b6','#e84393','#00cec9','#fdcb6e',
@@ -2088,10 +2515,14 @@ const PORT_COLORS = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#1abc9c',
   '#55efc4','#ff7675','#a29bfe','#ffeaa7','#74b9ff'];
 
 // ─── Рисование карты расключения ─────────────────────────────────────────────
-function engDrawMap(cx, cy, cab, lines, resW, resH) {
+function engDrawMap(cx, cy, cab, lines, resW, resH, extra) {
   const canvas = getEl('engCanvas');
   const cellSize = 46;             // размер клетки кабинета на карте
   const pad = 40;
+
+  // Нужно ли рисовать блок спецификаций (вес + мощность)?
+  const specsEl = getEl('engMapSpecs');
+  const showSpecs = extra && specsEl && specsEl.checked;
 
   // Текст заголовка
   const title = `${engCabType} · ${cx}×${cy} каб · ${resW}×${resH}px · Master линий: ${lines.length} (+${lines.length} backup)`;
@@ -2102,9 +2533,12 @@ function engDrawMap(cx, cy, cab, lines, resW, resH) {
   const titleW = measureCtx.measureText(title).width;
 
   // Ширина canvas = максимум из (ширина карты) и (ширина заголовка + отступы)
-  const mapW = cx * cellSize + pad * 2;
-  const W = Math.max(mapW, titleW + pad * 2);
-  const H = cy * cellSize + pad * 2 + 40;
+    const mapW = cx * cellSize + pad * 2;
+  const specsH = showSpecs ? 150 : 0;     // высота панели спецификаций снизу
+  let W = Math.max(mapW, titleW + pad * 2);
+  const H = cy * cellSize + pad * 2 + 40 + specsH;
+  // если панель спецификаций широкая — расширяем canvas
+  if (showSpecs) W = Math.max(W, 720);
   canvas.width = W;
   canvas.height = H;
   const maxDisp = 1100;
@@ -2188,11 +2622,110 @@ function engDrawMap(cx, cy, cab, lines, resW, resH) {
     const sx = ox + st.x*cellSize + cellSize/2, sy = oy + st.y*cellSize + cellSize/2;
     ctx.fillStyle = '#fff';
     ctx.beginPath(); ctx.arc(sx, sy, 11, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle = color;
+       ctx.fillStyle = color;
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('P' + (li + 1), sx, sy);
   });
+
+  // ─── 📄 Панель спецификаций (вес + мощность) внизу карты ───
+  if (showSpecs) {
+    drawMapSpecs(ctx, W, oy + cy * cellSize + 20, extra, cab, cx, cy);
+  }
+}
+
+// ─── 📄 Отрисовка блока «вес + мощность» на PNG-карте ───────────────────────
+function drawMapSpecs(ctx, W, topY, extra, cab, cx, cy) {
+  const { proc, needCount, totalCabs } = extra;
+  const pad = 40;
+  const boxW = W - pad * 2;
+  const boxH = 130;
+  const x0 = pad, y0 = topY;
+
+  // ── Считаем вес ──
+  const cabW    = parseFloat(getEl('engCabWeight').value) || 0;
+  const eExtra  = parseFloat(getEl('engRigExtra').value) || 0;
+  const reserve = parseFloat(getEl('engHoistReserve').value) || 0;
+  const hoistCap= parseFloat(getEl('engHoistCap').value) || 0;
+  const netW    = totalCabs * cabW;
+  const rigW    = netW * (1 + eExtra/100);
+  const calcW   = rigW * (1 + reserve/100);
+  const hoists  = hoistCap > 0 ? Math.ceil(calcW / hoistCap) : 0;
+
+  // ── Считаем мощность ──
+  const perCab = cab.power || 0;
+  const maxW   = totalCabs * perCab;
+  const avgW   = maxW * 0.35;
+  const ampsMax= maxW / 220;
+  const amps3  = maxW / (220 * 3);
+
+  // Рамка панели
+  ctx.fillStyle = '#181818';
+  ctx.strokeStyle = '#444';
+  ctx.lineWidth = 2;
+  roundRect(ctx, x0, y0, boxW, boxH, 10);
+  ctx.fill(); ctx.stroke();
+
+  // Три колонки
+  const colW = boxW / 3;
+  const colX = i => x0 + colW * i + 20;
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+
+  // ── Колонка 1: ПРОЦЕССОР ──
+  let ty = y0 + 14;
+  ctx.fillStyle = '#4ec9b0';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.fillText('🖥️ ПРОЦЕССОР', colX(0), ty);
+  ty += 26;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 15px sans-serif';
+  ctx.fillText(proc.name + (needCount > 1 ? ` × ${needCount}` : ''), colX(0), ty);
+  ty += 22;
+  ctx.fillStyle = '#bbb';
+  ctx.font = '13px sans-serif';
+  ctx.fillText('Вход: ' + proc.maxInput, colX(0), ty);
+  ty += 19;
+  ctx.fillStyle = proc.hdmiSync ? '#2ecc71' : '#ff6b6b';
+  ctx.fillText('HDMI-синхр.: ' + (proc.hdmiSync ? 'Да ✓' : 'Нет ✗'), colX(0), ty);
+
+  // ── Колонка 2: МОЩНОСТЬ ──
+  ty = y0 + 14;
+  ctx.fillStyle = '#2ecc71';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.fillText('⚡ МОЩНОСТЬ', colX(1), ty);
+  ty += 26;
+  ctx.fillStyle = '#ff8b8b';
+  ctx.font = 'bold 15px sans-serif';
+  ctx.fillText('Пик: ' + (maxW/1000).toFixed(1) + ' кВт', colX(1), ty);
+  ty += 22;
+  ctx.fillStyle = '#8fe;'.slice(0,4) === '#8fe' ? '#8fef8f' : '#8fef8f';
+  ctx.font = '13px sans-serif';
+  ctx.fillText('Средн.: ' + (avgW/1000).toFixed(1) + ' кВт', colX(1), ty);
+  ty += 19;
+  ctx.fillStyle = '#bbb';
+  ctx.fillText('Ток 1ф: ' + ampsMax.toFixed(0) + ' A', colX(1), ty);
+  ty += 19;
+  ctx.fillText('Ток 3ф: ' + amps3.toFixed(0) + ' A/фазу', colX(1), ty);
+
+  // ── Колонка 3: ВЕС / ЛЕБЁДКИ ──
+  ty = y0 + 14;
+  ctx.fillStyle = '#f0a500';
+  ctx.font = 'bold 16px sans-serif';
+  ctx.fillText('⚖️ ВЕС / ПОДВЕС', colX(2), ty);
+  ty += 26;
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 15px sans-serif';
+  ctx.fillText('В сборе: ' + rigW.toFixed(0) + ' кг', colX(2), ty);
+  ty += 22;
+  ctx.fillStyle = '#bbb';
+  ctx.font = '13px sans-serif';
+  ctx.fillText('С запасом: ' + calcW.toFixed(0) + ' кг', colX(2), ty);
+  ty += 19;
+  ctx.fillStyle = '#ffd479';
+  ctx.font = 'bold 14px sans-serif';
+  ctx.fillText('Лебёдок: ' + hoists + ' × ' + hoistCap + 'кг', colX(2), ty);
 }
 
 // Стрелка на конце линии
@@ -2237,6 +2770,7 @@ writeScreenToForm();
 renderTabs();
 makeCollapsible();
 engToggleStartEdge();   // показать/скрыть выбор края по состоянию галочки
+engSyncCabWeight();     // ⚖️ подставить вес кабинета по типу
 generate();
 </script>
 </body>
