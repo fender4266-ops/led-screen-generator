@@ -531,9 +531,10 @@
     </div>
         <div class="row" style="margin-top:10px;">
       <label>Грузоподъём. лебёдки (кг)
-        <select id="engHoistCap" onchange="engCalc()">
+          <select id="engHoistCap" onchange="engCalc()">
           <option value="250">250 кг</option>
           <option value="500">500 кг</option>
+          <option value="750">750 кг</option>
           <option value="1000">1000 кг</option>
           <option value="2000">2000 кг</option>
         </select>
@@ -1111,11 +1112,11 @@ function roundRect(ctx, x, y, w, h, r) {
    ctx должен быть уже смещён (translate) на позицию экрана.
 ═══════════════════════════════════════════════════════════════════════════ */
 
-function drawScreenContent(ctx, s, d) {
+// Только ФОН экрана (шахматка / градиент)
+function drawScreenBackground(ctx, s, d) {
   const f = s.fields;
   const W = d.w, H = d.h;
 
-  // Фон: шахматка / градиент
   if (s.mode === 'checker') {
     for (let y = 0; y < d.cabsY; y++)
       for (let x = 0; x < d.cabsX; x++) {
@@ -1132,6 +1133,12 @@ function drawScreenContent(ctx, s, d) {
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
   }
+}
+
+// ПЕРЕДНИЙ план: крест + лого + текст (рисуется ПОВЕРХ сетки/номеров)
+function drawScreenForeground(ctx, s, d) {
+  const f = s.fields;
+  const W = d.w, H = d.h;
 
   // Крест + круг
   if (f.showCross === true || f.showCross === 'true' || f.showCross === 'on') {
@@ -1153,6 +1160,12 @@ function drawScreenContent(ctx, s, d) {
 
   // Лого 2 в углу
   drawLogo2(ctx, s, d);
+}
+
+// Полная отрисовка (фон + передний план) — совместимость
+function drawScreenContent(ctx, s, d) {
+  drawScreenBackground(ctx, s, d);
+  drawScreenForeground(ctx, s, d);
 }
 
 // Приводим значение чекбокса (могло сохраниться как строка) к boolean
@@ -1318,70 +1331,115 @@ function drawComposition(ctx, comp, withOverlay) {
   ctx.save();
   ctx.translate(-comp.offX, -comp.offY);
 
+  // ─── 0️⃣ ПРОХОД: только ФОН всех экранов (шахматка/градиент) ───
   screens.forEach((s, idx) => {
     if (!s.visible) return;        // скрытые не рисуем
     const d = getScreenSize(s);
     ctx.save();
     ctx.translate(s.posX, s.posY);
-    // обрезаем по границам экрана, чтобы ничего не вылезло
     ctx.beginPath();
     ctx.rect(0, 0, d.w, d.h);
     ctx.clip();
-    drawScreenContent(ctx, s, d);
+    drawScreenBackground(ctx, s, d);   // ← только фон!
     ctx.restore();
-
-    // Оверлей (только превью)
-    if (withOverlay) {
-      // Линии сетки
-      if (withOverlay.lines) {
-        ctx.save();
-        ctx.translate(s.posX, s.posY);
-        ctx.strokeStyle = 'rgba(120,120,120,0.6)';
-        ctx.lineWidth = Math.max(1, Math.round(d.cabPxW / 96));
-        for (let x = 0; x <= d.cabsX; x++) {
-          ctx.beginPath(); ctx.moveTo(x * d.cabPxW, 0); ctx.lineTo(x * d.cabPxW, d.h); ctx.stroke();
-        }
-        for (let y = 0; y <= d.cabsY; y++) {
-          ctx.beginPath(); ctx.moveTo(0, y * d.cabPxH); ctx.lineTo(d.w, y * d.cabPxH); ctx.stroke();
-        }
-        ctx.restore();
-      }
-      // Номера кабинетов
-      if (withOverlay.nums) {
-        ctx.save();
-        ctx.translate(s.posX, s.posY);
-        ctx.fillStyle = '#ff8800';
-        ctx.font = `${Math.round(d.cabPxH / 6)}px sans-serif`;
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        let num = 1;
-        for (let y = 0; y < d.cabsY; y++)
-          for (let x = 0; x < d.cabsX; x++) {
-            ctx.fillText(num, x * d.cabPxW + d.cabPxW / 2, y * d.cabPxH + d.cabPxH / 2);
-            num++;
-          }
-        ctx.restore();
-      }
-      // Границы экрана + подпись
-      if (withOverlay.borders) {
-        ctx.save();
-       const active = withOverlay.activeHighlight && (idx === activeId);
-        ctx.strokeStyle = active ? '#4ec9b0' : '#00a0ff';
-        ctx.lineWidth = active ? 4 : 2;
-        ctx.strokeRect(s.posX, s.posY, d.w, d.h);
-        // подпись
-        ctx.fillStyle = active ? '#4ec9b0' : '#00a0ff';
-        const lbl = `${s.name}  (${d.w}×${d.h})`;
-        ctx.font = 'bold 22px sans-serif';
-        ctx.textAlign = 'left'; ctx.textBaseline = 'top';
-        const tw = ctx.measureText(lbl).width;
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(s.posX + 4, s.posY + 4, tw + 12, 30);
-        ctx.fillStyle = active ? '#4ec9b0' : '#00a0ff';
-        ctx.fillText(lbl, s.posX + 10, s.posY + 8);
-        ctx.restore();
-      }
-    }
   });
+
+  // ═══════════════════════════════════════════════════════════════
+  //  ОВЕРЛЕИ рисуем ПОСЛЕ всего контента, чтобы они не перекрывались
+  //  контентом соседних экранов. Порядок слоёв (снизу вверх):
+  //    1) контент всех экранов (уже нарисован)
+  //    2) линии сетки
+  //    3) номера кабинетов
+  //    4) рамки экранов
+  //    5) подписи экранов (самый верх)
+  // ═══════════════════════════════════════════════════════════════
+
+  // ─── 1️⃣ ПРОХОД: линии сетки ───
+  if (withOverlay && withOverlay.lines) {
+    screens.forEach((s) => {
+      if (!s.visible) return;
+      const d = getScreenSize(s);
+      ctx.save();
+      ctx.translate(s.posX, s.posY);
+      ctx.strokeStyle = 'rgba(120,120,120,0.6)';
+      ctx.lineWidth = Math.max(1, Math.round(d.cabPxW / 96));
+      for (let x = 0; x <= d.cabsX; x++) {
+        ctx.beginPath(); ctx.moveTo(x * d.cabPxW, 0); ctx.lineTo(x * d.cabPxW, d.h); ctx.stroke();
+      }
+      for (let y = 0; y <= d.cabsY; y++) {
+        ctx.beginPath(); ctx.moveTo(0, y * d.cabPxH); ctx.lineTo(d.w, y * d.cabPxH); ctx.stroke();
+      }
+      ctx.restore();
+    });
+  }
+
+  // ─── 2️⃣ ПРОХОД: номера кабинетов ───
+  if (withOverlay && withOverlay.nums) {
+    screens.forEach((s) => {
+      if (!s.visible) return;
+      const d = getScreenSize(s);
+      ctx.save();
+      ctx.translate(s.posX, s.posY);
+      ctx.fillStyle = '#ff8800';
+      ctx.font = `${Math.round(d.cabPxH / 6)}px sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      let num = 1;
+      for (let y = 0; y < d.cabsY; y++)
+        for (let x = 0; x < d.cabsX; x++) {
+          ctx.fillText(num, x * d.cabPxW + d.cabPxW / 2, y * d.cabPxH + d.cabPxH / 2);
+          num++;
+        }
+      ctx.restore();
+    });
+  }
+
+  // ─── 2.5️⃣ ПРОХОД: ПЕРЕДНИЙ ПЛАН (крест + лого + ТЕКСТ) ПОВЕРХ сетки/номеров ✅ ───
+  screens.forEach((s, idx) => {
+    if (!s.visible) return;
+    const d = getScreenSize(s);
+    ctx.save();
+    ctx.translate(s.posX, s.posY);
+    ctx.beginPath();
+    ctx.rect(0, 0, d.w, d.h);
+    ctx.clip();
+    drawScreenForeground(ctx, s, d);   // ← текст «Screen 1» поверх номеров
+    ctx.restore();
+  });
+
+  // ─── 3️⃣ ПРОХОД: рамки экранов ───
+  if (withOverlay && withOverlay.borders) {
+    screens.forEach((s, idx) => {
+      if (!s.visible) return;
+      const d = getScreenSize(s);
+      const active = withOverlay.activeHighlight && (idx === activeId);
+      ctx.save();
+      ctx.strokeStyle = active ? '#4ec9b0' : '#00a0ff';
+      ctx.lineWidth = active ? 4 : 2;
+      ctx.strokeRect(s.posX, s.posY, d.w, d.h);
+      ctx.restore();
+    });
+  }
+
+  // ─── 4️⃣ ПРОХОД: подписи экранов (самый верхний слой) ───
+  if (withOverlay && withOverlay.borders) {
+    screens.forEach((s, idx) => {
+      if (!s.visible) return;
+      const d = getScreenSize(s);
+      const active = withOverlay.activeHighlight && (idx === activeId);
+
+      ctx.save();
+      const lbl = `${s.name}  (${d.w}×${d.h})`;
+      ctx.font = 'bold 22px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'top';
+      const tw = ctx.measureText(lbl).width;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(s.posX + 4, s.posY + 4, tw + 12, 30);
+      ctx.fillStyle = active ? '#4ec9b0' : '#00a0ff';
+      ctx.fillText(lbl, s.posX + 10, s.posY + 8);
+      ctx.restore();
+    });
+  }
 
   ctx.restore();
 }
@@ -1487,34 +1545,46 @@ function saveAllPNG() {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, d.w, d.h);
 
-    // рисуем контент экрана
+     // 🎬 ПОРЯДОК СЛОЁВ: фон → сетка → номера → ТЕКСТ сверху → рамка
+
+    // 1️⃣ Фон экрана (шахматка/градиент)
     ctx.save();
     ctx.beginPath();
     ctx.rect(0, 0, d.w, d.h);
     ctx.clip();
-    drawScreenContent(ctx, s, d);
+    drawScreenBackground(ctx, s, d);
     ctx.restore();
 
-    // оверлей (если включён для PNG)
-    if (pngOverlay) {
-      if (pngOverlay.lines) {
-        ctx.strokeStyle = 'rgba(120,120,120,0.6)';
-        ctx.lineWidth = Math.max(1, Math.round(d.cabPxW / 96));
-        for (let x = 0; x <= d.cabsX; x++) { ctx.beginPath(); ctx.moveTo(x*d.cabPxW,0); ctx.lineTo(x*d.cabPxW,d.h); ctx.stroke(); }
-        for (let y = 0; y <= d.cabsY; y++) { ctx.beginPath(); ctx.moveTo(0,y*d.cabPxH); ctx.lineTo(d.w,y*d.cabPxH); ctx.stroke(); }
-      }
-      if (pngOverlay.nums) {
-        ctx.fillStyle = '#ff8800';
-        ctx.font = `${Math.round(d.cabPxH/6)}px sans-serif`;
-        ctx.textAlign='center'; ctx.textBaseline='middle';
-        let num=1;
-        for (let y=0;y<d.cabsY;y++) for (let x=0;x<d.cabsX;x++){ ctx.fillText(num, x*d.cabPxW+d.cabPxW/2, y*d.cabPxH+d.cabPxH/2); num++; }
-      }
-      if (pngOverlay.borders) {
-        ctx.strokeStyle = '#00a0ff';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(0, 0, d.w, d.h);
-      }
+    // 2️⃣ Линии сетки (ПОД текстом)
+    if (pngOverlay && pngOverlay.lines) {
+      ctx.strokeStyle = 'rgba(120,120,120,0.6)';
+      ctx.lineWidth = Math.max(1, Math.round(d.cabPxW / 96));
+      for (let x = 0; x <= d.cabsX; x++) { ctx.beginPath(); ctx.moveTo(x*d.cabPxW,0); ctx.lineTo(x*d.cabPxW,d.h); ctx.stroke(); }
+      for (let y = 0; y <= d.cabsY; y++) { ctx.beginPath(); ctx.moveTo(0,y*d.cabPxH); ctx.lineTo(d.w,y*d.cabPxH); ctx.stroke(); }
+    }
+
+    // 3️⃣ Номера кабинетов (ПОД текстом)
+    if (pngOverlay && pngOverlay.nums) {
+      ctx.fillStyle = '#ff8800';
+      ctx.font = `${Math.round(d.cabPxH/6)}px sans-serif`;
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      let num=1;
+      for (let y=0;y<d.cabsY;y++) for (let x=0;x<d.cabsX;x++){ ctx.fillText(num, x*d.cabPxW+d.cabPxW/2, y*d.cabPxH+d.cabPxH/2); num++; }
+    }
+
+    // 4️⃣ ПЕРЕДНИЙ план: крест + лого + ТЕКСТ (ПОВЕРХ сетки/номеров) ✅
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, d.w, d.h);
+    ctx.clip();
+    drawScreenForeground(ctx, s, d);
+    ctx.restore();
+
+    // 5️⃣ Рамка экрана (самый верх)
+    if (pngOverlay && pngOverlay.borders) {
+      ctx.strokeStyle = '#00a0ff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(0, 0, d.w, d.h);
     }
 
     // Скачиваем с небольшой задержкой (браузеры блокируют пачку загрузок)
