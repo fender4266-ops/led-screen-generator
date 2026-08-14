@@ -21,6 +21,30 @@
   .info { font-size:14px; line-height:1.6; }
   .info b { color:#4ec9b0; }
   #preview { border:1px solid #444; max-width:100%; image-rendering:pixelated; margin-top:10px; background:#000; cursor:grab; }
+
+  /* 📌 Закреплённое превью сверху экрана */
+  #previewWrap.pinned {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1000;
+    background: #1e1e1e;
+    border-bottom: 2px solid #4ec9b0;
+    padding: 8px 20px 10px 20px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+    max-height: 45vh;               /* не больше 45% высоты экрана */
+    overflow: auto;
+    box-sizing: border-box;
+  }
+  #previewWrap.pinned #preview {
+    max-height: 32vh;               /* превью влезает в закреплённую зону */
+    width: auto !important;
+    margin-top: 6px;
+  }
+  /* Заглушка-распорка, чтобы контент не прыгал под закреплённое окно */
+  #pinSpacer { display: none; }
+  #pinSpacer.active { display: block; }
   .checkbox { flex-direction:row !important; align-items:center; gap:6px; }
   .mode-btns { display:flex; gap:8px; flex-wrap:wrap; }
   h4 { margin:0 0 10px 0; color:#4ec9b0; font-size:14px; }
@@ -470,9 +494,22 @@
   <div class="info" id="info" style="margin-top:12px;"></div>
 </div>
 
-<canvas id="preview"></canvas>
+<div id="pinSpacer"></div>
+<div id="previewWrap">
+  <div class="row" style="margin-top:12px; align-items:center;">
+    <span style="font-size:13px; color:#f0a500;">🔍 Масштаб превью:</span>
+    <button onclick="zoomPreview(-1)" title="Отдалить">➖</button>
+    <span id="zoomLabel" style="min-width:80px; text-align:center; font-weight:bold;">Авто</span>
+    <button onclick="zoomPreview(1)" title="Приблизить">➕</button>
+    <button onclick="zoomPreview(0)" title="Сбросить к авто-размеру">↩️ Сброс</button>
+    <label class="checkbox" style="margin-left:auto;">
+      <input type="checkbox" id="pinPreview" onchange="togglePinPreview()">
+      📌 Закрепить превью сверху
+    </label>
+  </div>
+  <canvas id="preview"></canvas>
+</div>
 </div><!-- /page-visual -->
-
 
 <!-- ═══════════ СТРАНИЦА 2: ИНЖЕНЕРНЫЙ РАСЧЁТ ═══════════ -->
 <div id="page-engineer" class="page">
@@ -526,9 +563,10 @@
     </div>
 
     
-    <div class="row" style="margin-top:14px; padding-top:14px; border-top:1px solid #444;">
-      <span style="font-size:13px; color:#4ec9b0; font-weight:bold;">⚖️ Подвес / лебёдки:</span>
+     <div class="row" style="margin-top:14px; padding-top:14px; border-top:1px solid #444;">
+      <span style="font-size:13px; color:#f0a500; font-weight:bold;">⚖️ Подвес / лебёдки:</span>
     </div>
+
         <div class="row" style="margin-top:10px;">
       <label>Грузоподъём. лебёдки (кг)
           <select id="engHoistCap" onchange="engCalc()">
@@ -757,6 +795,59 @@ function loadSession() {
 
 let screens = [ defaultScreen('Screen 1', 0, 0) ];
 let activeId = 0;
+
+// 🔍 Зум превью: null = авто (вписать в 1000px), число = ручной множитель
+let previewZoom = null;
+
+// Кнопки зума: dir = +1 (приблизить), -1 (отдалить), 0 (сброс на авто)
+function zoomPreview(dir) {
+  const comp = getCompBounds();
+  if (comp.w === 0) return;
+
+  // авто-масштаб (как было раньше) — стартовая точка
+  const maxDisp = 1000;
+  const autoScale = Math.min(1, maxDisp / comp.w, maxDisp / comp.h);
+
+  if (dir === 0) {
+    previewZoom = null;            // сброс на авто
+  } else {
+    // если ещё авто — начинаем от авто-масштаба
+    let cur = (previewZoom === null) ? autoScale : previewZoom;
+    const step = 1.25;             // шаг зума (+25% / −25%)
+    cur = (dir > 0) ? cur * step : cur / step;
+    // ограничения: от 5% до 500%
+    cur = Math.max(0.05, Math.min(5, cur));
+    previewZoom = cur;
+  }
+  renderPreview();
+}
+
+
+// 📌 Закрепить / открепить окно превью сверху экрана
+function togglePinPreview() {
+  const wrap = getEl('previewWrap');
+  const spacer = getEl('pinSpacer');
+  const chk = getEl('pinPreview');
+  if (!wrap || !chk) return;
+
+  if (chk.checked) {
+    wrap.classList.add('pinned');
+    // распорка = высота закреплённого окна (чтобы контент не прыгал наверх)
+    if (spacer) {
+      spacer.classList.add('active');
+      spacer.style.height = wrap.offsetHeight + 'px';
+    }
+  } else {
+    wrap.classList.remove('pinned');
+    if (spacer) {
+      spacer.classList.remove('active');
+      spacer.style.height = '0';
+    }
+  }
+  // сохранить выбор
+  try { localStorage.setItem('pinPreview', chk.checked ? '1' : '0'); } catch(e) {}
+}
+
 
 // Применяем первый пресет к стартовому экрану
 (function initFirstPreset(){
@@ -1485,10 +1576,27 @@ function renderPreview() {
   const canvas = getEl('preview');
   canvas.width = comp.w;
   canvas.height = comp.h;
+
+  // 🔍 Масштаб: авто (вписать в 1000px) или ручной (previewZoom)
   const maxDisp = 1000;
-  const scale = Math.min(1, maxDisp / comp.w, maxDisp / comp.h);
+  const autoScale = Math.min(1, maxDisp / comp.w, maxDisp / comp.h);
+  const scale = (previewZoom === null) ? autoScale : previewZoom;
+
   canvas.style.width = (comp.w * scale) + 'px';
   canvas.style.height = (comp.h * scale) + 'px';
+
+  // Обновляем подпись масштаба на кнопке
+  const zl = getEl('zoomLabel');
+  if (zl) zl.textContent = (previewZoom === null)
+    ? 'Авто (' + Math.round(autoScale * 100) + '%)'
+    : Math.round(scale * 100) + '%';
+
+  // 📌 Если превью закреплено — обновляем распорку под его высоту
+  const wrap = getEl('previewWrap');
+  const spacer = getEl('pinSpacer');
+  if (wrap && wrap.classList.contains('pinned') && spacer) {
+    spacer.style.height = wrap.offsetHeight + 'px';
+  }
 
     const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, comp.w, comp.h);
@@ -1996,6 +2104,13 @@ const PROCESSORS = [
 
 const CAB_SIZE_M = 0.5;   // все кабинеты 0.5×0.5 м
 let engCabType = 'P3.9';
+let engProcChoice = 'auto';   // 🖥️ выбор процессора: 'auto' или индекс "0".."5"
+
+// Вызывается при смене процессора в выпадающем списке (внутри блока результата)
+function engSetProc(val) {
+  engProcChoice = val;
+  engCalc();
+}
 
 // ─── Автосохранение инженерной страницы (F5-защита) ─────────────────────────
 const ENG_SESSION_KEY = 'ledEngSession';
@@ -2010,10 +2125,11 @@ function saveEngSession() {
       mh: getEl('engMH').value,
       dir: getEl('engDir').value,
       sameStart: getEl('engPortsSameStart').checked,
-      startEdge: getEl('engStartEdge') ? getEl('engStartEdge').value : 'top',
+            startEdge: getEl('engStartEdge') ? getEl('engStartEdge').value : 'top',
       rectMode: getEl('engRectMode') ? getEl('engRectMode').checked : false,
       hoistCap: getEl('engHoistCap') ? getEl('engHoistCap').value : '250',
-      mapSpecs: getEl('engMapSpecs') ? getEl('engMapSpecs').checked : true
+      mapSpecs: getEl('engMapSpecs') ? getEl('engMapSpecs').checked : true,
+            procSelect: engProcChoice
     };
     localStorage.setItem(ENG_SESSION_KEY, JSON.stringify(data));
   } catch (e) { console.warn('Не удалось сохранить инженерную сессию:', e); }
@@ -2039,8 +2155,9 @@ function loadEngSession() {
     if (d.sameStart !== undefined) getEl('engPortsSameStart').checked = d.sameStart;
     if (d.startEdge && getEl('engStartEdge')) getEl('engStartEdge').value = d.startEdge;
     if (d.rectMode !== undefined && getEl('engRectMode')) getEl('engRectMode').checked = d.rectMode;
-    if (d.hoistCap && getEl('engHoistCap')) getEl('engHoistCap').value = d.hoistCap;
+     if (d.hoistCap && getEl('engHoistCap')) getEl('engHoistCap').value = d.hoistCap;
     if (d.mapSpecs !== undefined && getEl('engMapSpecs')) getEl('engMapSpecs').checked = d.mapSpecs;
+     if (d.procSelect) engProcChoice = d.procSelect;
     return true;
   } catch (e) {
     console.warn('Не удалось загрузить инженерную сессию:', e);
@@ -2108,25 +2225,38 @@ function engCalc() {
   const lines = snake.lines;
   const numLines = lines.length;
 
-  // ПРАВИЛО 1: доступно только половина портов (backup) → masterPorts = ports/2
-  // ПРАВИЛО 4: если один не тянет — считаем сколько нужно
-  let chosen = null, needCount = 1;
-  for (const p of PROCESSORS) {
-    const master = p.ports / 2;
-    if (totalPx <= p.maxPx && numLines <= master) { chosen = p; needCount = 1; break; }
-  }
-  // Если ни один одиночный не тянет — берём самый мощный и считаем количество
-  if (!chosen) {
-    const big = PROCESSORS[PROCESSORS.length - 1]; // VX2000+CWT
-    const masterBig = big.ports / 2;
-    const byPorts = Math.ceil(numLines / masterBig);
-    const byPx    = Math.ceil(totalPx / big.maxPx);
-    needCount = Math.max(byPorts, byPx);
-    chosen = big;
+  // ─── 🖥️ Выбор процессора: авто или вручную ───────────────────────────────────
+    const procSel = engProcChoice;
+  let chosen = null;
+  let needCount = 1;
+
+  if (procSel === 'auto') {
+    // 🤖 АВТО: ищем самый маленький подходящий процессор на 1 шт
+    for (const p of PROCESSORS) {
+      const master = p.ports / 2;
+      if (totalPx <= p.maxPx && numLines <= master) { chosen = p; needCount = 1; break; }
+    }
+    // Если ни один одиночный не тянет — берём мощнейший и считаем сколько нужно
+    if (!chosen) {
+      chosen = PROCESSORS[PROCESSORS.length - 1];
+      const master = chosen.ports / 2;
+      needCount = Math.max(
+        Math.ceil(totalPx / chosen.maxPx),
+        Math.ceil(numLines / master)
+      );
+    }
+  } else {
+    // 👤 ВРУЧНУЮ: пользователь выбрал модель — считаем сколько штук нужно
+    chosen = PROCESSORS[parseInt(procSel)] || PROCESSORS[0];
+    const master = chosen.ports / 2;
+    needCount = Math.max(
+      1,
+      Math.ceil(totalPx / chosen.maxPx),   // по пикселям
+      Math.ceil(numLines / master)         // по линиям (портам)
+    );
   }
 
   const master = chosen.ports / 2;
-
   // Отчёт
   let html = '';
   html += `📦 Кабинет: <b>${engCabType}</b> (${cab.px}×${cab.px}px, лимит <b>${cab.perLine}</b>/линия)<br>`;
@@ -2169,13 +2299,29 @@ function engCalc() {
   html += `🔌 Рабочих линий (master): <b>${numLines}</b> &nbsp;<span style="font-size:12px;color:#999;">+${numLines} backup</span><br>`;
   html += `<hr style="border-color:#444;">`;
 
+  const isManual = (procSel !== 'auto');
+
+  // 🖥️ Выпадающий список выбора процессора прямо в блоке результата
+  const procOptions = PROCESSORS.map((p, i) =>
+    `<option value="${i}" ${procSel == i ? 'selected' : ''}>${p.name}</option>`
+  ).join('');
+  html += `<div style="margin-bottom:8px;">
+    <label style="font-size:13px; color:#4ec9b0; font-weight:bold;">🖥️ Модель процессора:
+      <select onchange="engSetProc(this.value)" style="margin-left:8px; padding:5px; background:#1e1e1e; color:#ddd; border:1px solid #555; border-radius:4px;">
+        <option value="auto" ${procSel === 'auto' ? 'selected' : ''}>🤖 Авто (оптимальный)</option>
+        ${procOptions}
+      </select>
+    </label>
+  </div>`;
+
   if (needCount === 1) {
-    html += `🖥️ Процессор: <b style="color:#4ec9b0;">${chosen.name}</b> ×1<br>`;
+    html += `🖥️ Процессор: <b style="color:#4ec9b0;">${chosen.name}</b> × 1`;
+    html += isManual ? ` <span style="color:#f0a500;">(выбран вручную)</span><br>` : `<br>`;
     html += `<span style="font-size:12px;color:#999;">Портов: ${chosen.ports} (${master} master + ${master} backup) · использовано ${numLines}/${master}</span>`;
   } else {
-    html += `⚠️ <b style="color:#ff6b6b;">Одного процессора недостаточно!</b><br>`;
-    html += `🖥️ Нужно: <b style="color:#4ec9b0;">${chosen.name} × ${needCount} шт</b><br>`;
-    html += `<span style="font-size:12px;color:#999;">Каждый: ${master} master портов · Всего линий: ${numLines}</span>`;
+    html += `🖥️ Процессоров: <b style="color:#4ec9b0;">${chosen.name} × ${needCount} шт</b>`;
+    html += isManual ? ` <span style="color:#f0a500;">(выбран вручную)</span><br>` : `<br>`;
+    html += `<span style="font-size:12px;color:#999;">Каждый: ${master} master портов · Всего линий: ${numLines} · На процессор: ~${Math.ceil(numLines/needCount)}</span>`;
   }
 
   // ─── 📋 Карточка характеристик процессора ───────────────────────────────
@@ -2189,8 +2335,19 @@ function engCalc() {
 
   getEl('engResult').innerHTML = html;  
 
+  // Вычислим, какой процессор для какой линии
+  const masterPerProc = chosen.ports / 2;
+  const procOfLine = [];
+  for (let i = 0; i < numLines; i++) {
+    procOfLine.push(Math.floor(i / masterPerProc) + 1);  // 1, 1, 1... 2, 2, 2... и т.д.
+  }
+
   engDrawMap(cx, cy, cab, lines, resW, resH, {
     proc: chosen, needCount, totalCabs, totalPx
+  }, {
+    count: needCount,
+    perProc: masterPerProc,
+    ofLine: procOfLine
   });
   saveEngSession();   // 💾 автосохранение инженерных настроек
 }
@@ -2585,7 +2742,7 @@ const PORT_COLORS = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#1abc9c',
   '#55efc4','#ff7675','#a29bfe','#ffeaa7','#74b9ff'];
 
 // ─── Рисование карты расключения ─────────────────────────────────────────────
-function engDrawMap(cx, cy, cab, lines, resW, resH, extra) {
+function engDrawMap(cx, cy, cab, lines, resW, resH, extra, procMap) {
   const canvas = getEl('engCanvas');
   const cellSize = 46;             // размер клетки кабинета на карте
   const pad = 40;
@@ -2687,15 +2844,25 @@ function engDrawMap(cx, cy, cab, lines, resW, resH, extra) {
       const bx = ox + b2.x*cellSize + cellSize/2, by = oy + b2.y*cellSize + cellSize/2;
       drawArrow(ctx, ax, ay, bx, by, color);
     }
-    // Метка старта линии (кружок с номером порта)
+       // Метка старта линии (кружок с номером порта или "процессор.порт")
     const st = line[0];
     const sx = ox + st.x*cellSize + cellSize/2, sy = oy + st.y*cellSize + cellSize/2;
     ctx.fillStyle = '#fff';
     ctx.beginPath(); ctx.arc(sx, sy, 11, 0, Math.PI*2); ctx.fill();
-       ctx.fillStyle = color;
+    ctx.fillStyle = color;
     ctx.font = 'bold 13px sans-serif';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('P' + (li + 1), sx, sy);
+    
+    // Если несколько процессоров — показываем "1.3" (проц 1, порт 3)
+    let lineLabel;
+    if (procMap && procMap.count > 1) {
+      const procN = procMap.ofLine[li] || 1;              // номер процессора (1..N)
+      const portInProc = (li % procMap.perProc) + 1;      // порт внутри этого процессора (1..perProc)
+      lineLabel = procN + '.' + portInProc;
+    } else {
+      lineLabel = 'P' + (li + 1);                         // старый формат для одного проца
+    }
+    ctx.fillText(lineLabel, sx, sy);
   });
 
   // ─── 📄 Панель спецификаций (вес + мощность) внизу карты ───
@@ -2842,6 +3009,14 @@ makeCollapsible();
 engToggleStartEdge();   // показать/скрыть выбор края по состоянию галочки
 engSyncCabWeight();     // ⚖️ подставить вес кабинета по типу
 generate();
+
+// 📌 Восстановить состояние закрепления превью
+try {
+  if (localStorage.getItem('pinPreview') === '1') {
+    const chk = getEl('pinPreview');
+    if (chk) { chk.checked = true; togglePinPreview(); }
+  }
+} catch (e) {}
 </script>
 </body>
 </html>
