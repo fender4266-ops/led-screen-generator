@@ -38,13 +38,16 @@
     box-sizing: border-box;
   }
   #previewWrap.pinned #preview {
-    max-height: 32vh;               /* превью влезает в закреплённую зону */
+    max-height: 30vh;               /* превью влезает в закреплённую зону */
     width: auto !important;
     margin-top: 6px;
   }
-  /* Заглушка-распорка, чтобы контент не прыгал под закреплённое окно */
-  #pinSpacer { display: none; }
-  #pinSpacer.active { display: block; }
+  /* Распорка больше не нужна — двигаем всю страницу через body padding */
+  #pinSpacer { display: none !important; }
+
+  /* Кнопка сворачивания закреплённого превью */
+  #previewWrap.pinned.collapsed #preview { display: none; }
+  #previewWrap.pinned { transition: max-height 0.2s; }
   .checkbox { flex-direction:row !important; align-items:center; gap:6px; }
   .mode-btns { display:flex; gap:8px; flex-wrap:wrap; }
   h4 { margin:0 0 10px 0; color:#4ec9b0; font-size:14px; }
@@ -502,7 +505,8 @@
     <span id="zoomLabel" style="min-width:80px; text-align:center; font-weight:bold;">Авто</span>
     <button onclick="zoomPreview(1)" title="Приблизить">➕</button>
     <button onclick="zoomPreview(0)" title="Сбросить к авто-размеру">↩️ Сброс</button>
-    <label class="checkbox" style="margin-left:auto;">
+    <button id="pinCollapseBtn" onclick="toggleCollapsePin()" title="Свернуть/развернуть закреплённое превью" style="margin-left:auto; background:#444; padding:6px 10px;">🔽</button>
+    <label class="checkbox">
       <input type="checkbox" id="pinPreview" onchange="togglePinPreview()">
       📌 Закрепить превью сверху
     </label>
@@ -839,27 +843,44 @@ function zoomPreview(dir) {
 // 📌 Закрепить / открепить окно превью сверху экрана
 function togglePinPreview() {
   const wrap = getEl('previewWrap');
-  const spacer = getEl('pinSpacer');
   const chk = getEl('pinPreview');
   if (!wrap || !chk) return;
 
   if (chk.checked) {
     wrap.classList.add('pinned');
-    // распорка = высота закреплённого окна (чтобы контент не прыгал наверх)
-    if (spacer) {
-      spacer.classList.add('active');
-      spacer.style.height = wrap.offsetHeight + 'px';
-    }
   } else {
     wrap.classList.remove('pinned');
-    if (spacer) {
-      spacer.classList.remove('active');
-      spacer.style.height = '0';
-    }
   }
+  updatePinOffset();   // сдвигаем всю страницу вниз на высоту закреплённого окна
+
   // сохранить выбор
   try { localStorage.setItem('pinPreview', chk.checked ? '1' : '0'); } catch(e) {}
 }
+
+// 📏 Сдвигаем содержимое страницы, чтобы оно не пряталось под закреплённым превью
+function updatePinOffset() {
+  const wrap = getEl('previewWrap');
+  if (!wrap) return;
+  if (wrap.classList.contains('pinned')) {
+    // высота закреплённого блока + обычный отступ body (20px)
+    document.body.style.paddingTop = (wrap.offsetHeight + 20) + 'px';
+  } else {
+    document.body.style.paddingTop = '';   // вернуть как в CSS
+  }
+}
+
+// 🔽 Свернуть / развернуть закреплённое превью (остаётся только панель кнопок)
+function toggleCollapsePin() {
+  const wrap = getEl('previewWrap');
+  const btn  = getEl('pinCollapseBtn');
+  if (!wrap || !wrap.classList.contains('pinned')) return;
+  wrap.classList.toggle('collapsed');
+  if (btn) btn.textContent = wrap.classList.contains('collapsed') ? '🔼' : '🔽';
+  updatePinOffset();
+}
+
+// Пересчёт при изменении размера окна
+window.addEventListener('resize', updatePinOffset);
 
 
 // Применяем первый пресет к стартовому экрану
@@ -1604,11 +1625,10 @@ function renderPreview() {
     ? 'Авто (' + Math.round(autoScale * 100) + '%)'
     : Math.round(scale * 100) + '%';
 
-  // 📌 Если превью закреплено — обновляем распорку под его высоту
-  const wrap = getEl('previewWrap');
-  const spacer = getEl('pinSpacer');
-  if (wrap && wrap.classList.contains('pinned') && spacer) {
-    spacer.style.height = wrap.offsetHeight + 'px';
+  // 📌 Если превью закреплено — пересчитываем сдвиг страницы
+  // (canvas изменил размер → изменилась высота закреплённого блока)
+  if (typeof updatePinOffset === 'function') {
+    requestAnimationFrame(updatePinOffset);
   }
 
     const ctx = canvas.getContext('2d');
