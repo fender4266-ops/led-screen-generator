@@ -625,6 +625,19 @@
     <div class="row" style="margin-top:10px;">
       <button onclick="engSavePNG()" style="background:#8a2be2;">💾 Сохранить карту PNG</button>
     </div>
+
+    <div class="row" style="margin-top:14px; padding-top:14px; border-top:1px solid #444;">
+      <span style="font-size:13px; color:#16a085; font-weight:bold;">📋 Что включить в спецификацию:</span>
+    </div>
+    <div class="row" style="margin-top:8px;">
+      <label class="checkbox"><input type="checkbox" id="specChkParams" checked> 📐 Параметры экрана</label>
+      <label class="checkbox"><input type="checkbox" id="specChkProc"   checked> 🖥️ Видеопроцессор</label>
+      <label class="checkbox"><input type="checkbox" id="specChkPower"  checked> ⚡ Потребляемая мощность</label>
+      <label class="checkbox"><input type="checkbox" id="specChkWeight" checked> ⚖️ Вес и подвес</label>
+    </div>
+    <div class="row" style="margin-top:10px;">
+      <button onclick="engSaveSpecsPNG()" style="background:#16a085;">📋 Сохранить характеристики PNG</button>
+    </div>
     <canvas id="engCanvas" style="border:1px solid #444; max-width:100%; margin-top:12px; background:#111;"></canvas>
   </div>
 
@@ -2129,7 +2142,11 @@ function saveEngSession() {
       rectMode: getEl('engRectMode') ? getEl('engRectMode').checked : false,
       hoistCap: getEl('engHoistCap') ? getEl('engHoistCap').value : '250',
       mapSpecs: getEl('engMapSpecs') ? getEl('engMapSpecs').checked : true,
-            procSelect: engProcChoice
+      procSelect: engProcChoice,
+      specParams: getEl('specChkParams') ? getEl('specChkParams').checked : true,
+      specProc:   getEl('specChkProc')   ? getEl('specChkProc').checked   : true,
+      specPower:  getEl('specChkPower')  ? getEl('specChkPower').checked  : true,
+      specWeight: getEl('specChkWeight') ? getEl('specChkWeight').checked : true
     };
     localStorage.setItem(ENG_SESSION_KEY, JSON.stringify(data));
   } catch (e) { console.warn('Не удалось сохранить инженерную сессию:', e); }
@@ -2155,9 +2172,15 @@ function loadEngSession() {
     if (d.sameStart !== undefined) getEl('engPortsSameStart').checked = d.sameStart;
     if (d.startEdge && getEl('engStartEdge')) getEl('engStartEdge').value = d.startEdge;
     if (d.rectMode !== undefined && getEl('engRectMode')) getEl('engRectMode').checked = d.rectMode;
-     if (d.hoistCap && getEl('engHoistCap')) getEl('engHoistCap').value = d.hoistCap;
+    if (d.hoistCap && getEl('engHoistCap')) getEl('engHoistCap').value = d.hoistCap;
     if (d.mapSpecs !== undefined && getEl('engMapSpecs')) getEl('engMapSpecs').checked = d.mapSpecs;
-     if (d.procSelect) engProcChoice = d.procSelect;
+    if (d.procSelect) engProcChoice = d.procSelect;
+    // ☑️ Восстанавливаем галочки блоков спецификации
+    const setChk = (id, v) => { const el = getEl(id); if (el && v !== undefined) el.checked = v; };
+    setChk('specChkParams', d.specParams);
+    setChk('specChkProc',   d.specProc);
+    setChk('specChkPower',  d.specPower);
+    setChk('specChkWeight', d.specWeight);
     return true;
   } catch (e) {
     console.warn('Не удалось загрузить инженерную сессию:', e);
@@ -2977,6 +3000,230 @@ function drawArrow(ctx, fromX, fromY, toX, toY, color) {
   ctx.closePath();
   ctx.fill();
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   📋 СПЕЦИФИКАЦИЯ ЭКРАНА — отдельный PNG без карты расключения
+═══════════════════════════════════════════════════════════════════════════ */
+
+// Собираем ВСЕ расчётные данные в один объект (та же логика, что в engCalc)
+function engBuildSpecsData() {
+  const cab = CAB_TYPES[engCabType];
+  const cx = parseInt(getEl('engCX').value) || 0;
+  const cy = parseInt(getEl('engCY').value) || 0;
+  if (cx < 1 || cy < 1) return null;
+
+  const totalCabs = cx * cy;
+  const totalPx   = totalCabs * cab.px * cab.px;
+  const resW = cx * cab.px, resH = cy * cab.px;
+  const areaM2 = (cx * CAB_SIZE_M) * (cy * CAB_SIZE_M);
+
+  // ── Линии (порты) ──
+  const dir = parseInt(getEl('engDir').value);
+  const snake = buildSnake(cx, cy, cab.perLine, dir);
+  const numLines = snake.lines.length;
+
+  // ── Процессор (авто или вручную) ──
+  const procSel = engProcChoice;
+  let chosen = null, needCount = 1;
+  if (procSel === 'auto') {
+    for (const p of PROCESSORS) {
+      const m = p.ports / 2;
+      if (totalPx <= p.maxPx && numLines <= m) { chosen = p; needCount = 1; break; }
+    }
+    if (!chosen) {
+      chosen = PROCESSORS[PROCESSORS.length - 1];
+      const m = chosen.ports / 2;
+      needCount = Math.max(Math.ceil(totalPx / chosen.maxPx), Math.ceil(numLines / m));
+    }
+  } else {
+    chosen = PROCESSORS[parseInt(procSel)] || PROCESSORS[0];
+    const m = chosen.ports / 2;
+    needCount = Math.max(1, Math.ceil(totalPx / chosen.maxPx), Math.ceil(numLines / m));
+  }
+  const master = chosen.ports / 2;
+  const loadPct = Math.round(totalPx / (chosen.maxPx * needCount) * 100);
+
+  // ── Мощность ──
+  const perCabW = cab.power || 0;
+  const maxW    = totalCabs * perCabW;
+  const avgW    = maxW * 0.35;
+  const wPerM2  = areaM2 > 0 ? Math.round(maxW / areaM2) : 0;
+  const amps1   = maxW / 220;
+  const amps3   = maxW / (220 * 3);
+  const brk1    = Math.ceil(amps1 * 1.25 / 5) * 5;
+  const brk3    = Math.ceil(amps3 * 1.25 / 5) * 5;
+
+  // ── Вес / лебёдки ──
+  const cabWkg   = parseFloat(getEl('engCabWeight').value) || 0;
+  const rigExtra = parseFloat(getEl('engRigExtra').value) || 0;
+  const reserve  = parseFloat(getEl('engHoistReserve').value) || 0;
+  const hoistCap = parseFloat(getEl('engHoistCap').value) || 0;
+  const netKg    = totalCabs * cabWkg;
+  const rigKg    = netKg * (1 + rigExtra / 100);
+  const calcKg   = rigKg * (1 + reserve / 100);
+  const hoists   = hoistCap > 0 ? Math.ceil(calcKg / hoistCap) : 0;
+  const perHoist = hoists > 0 ? rigKg / hoists : 0;
+  const hoistPct = hoistCap > 0 ? Math.round(perHoist / hoistCap * 100) : 0;
+
+  return {
+    cab, cx, cy, totalCabs, totalPx, resW, resH, areaM2,
+    numLines, chosen, needCount, master, loadPct, isManual: (procSel !== 'auto'),
+    perCabW, maxW, avgW, wPerM2, amps1, amps3, brk1, brk3,
+    cabWkg, rigExtra, reserve, hoistCap, netKg, rigKg, calcKg, hoists, perHoist, hoistPct
+  };
+}
+
+// 📋 Рисуем и скачиваем PNG со спецификацией
+function engSaveSpecsPNG() {
+  const d = engBuildSpecsData();
+  if (!d) { alert('Введите размеры экрана!'); return; }
+
+  const nf = n => n.toLocaleString('ru');   // 11 059 200
+
+  // ── Собираем блоки: {title, color, bg, border, rows:[[label, value, hint, valColor]]} ──
+  const allBlocks = [
+    {
+      title: '📐 ПАРАМЕТРЫ ЭКРАНА', color: '#4ec9b0', bg: '#20303a', border: '#2a5060',
+      rows: [
+        ['📦 Тип кабинета',  `${engCabType}`, `(${d.cab.px}×${d.cab.px} px · ${CAB_SIZE_M}×${CAB_SIZE_M} м)`],
+        ['📐 Размер экрана', `${(d.cx*CAB_SIZE_M).toFixed(1)} × ${(d.cy*CAB_SIZE_M).toFixed(1)} м`, `(площадь ${d.areaM2.toFixed(1)} м²)`],
+        ['🔢 Кабинетов',     `${d.cx} × ${d.cy} = ${d.totalCabs} шт`, '(= приёмных карт)'],
+        ['🧮 Разрешение',    `${d.resW} × ${d.resH} px`, ''],
+        ['🖼️ Всего пикселей', `${nf(d.totalPx)} px`, '']
+      ]
+    },
+    {
+      title: '🖥️ ВИДЕОПРОЦЕССОР', color: '#4ec9b0', bg: '#20303a', border: '#2a5060',
+      rows: [
+        ['🖥️ Модель', `${d.chosen.name}${d.needCount > 1 ? ` × ${d.needCount} шт` : ' × 1'}`, d.isManual ? '(выбран вручную)' : '(авто-подбор)'],
+        ['📥 Макс. вход',   `${d.chosen.maxInput}`, ''],
+        ['🎬 Видеовходы',   `${d.chosen.video || '—'}`, ''],
+        ['🔌 Портов',       `${d.chosen.ports} (${d.master} master + ${d.master} backup)`, ''],
+        ['🔗 Рабочих линий', `${d.numLines} master`, `(+${d.numLines} backup)`],
+        ['⚙️ Загрузка',     `${d.loadPct}%`, `(лимит ${nf(d.chosen.maxPx * d.needCount)} px)`,
+          d.loadPct > 90 ? '#ff6b6b' : d.loadPct > 70 ? '#f0a500' : '#2ecc71']
+      ]
+    },
+    {
+      title: '⚡ ПОТРЕБЛЯЕМАЯ МОЩНОСТЬ', color: '#2ecc71', bg: '#1a2a1a', border: '#2a5a2a',
+      rows: [
+        ['📦 На кабинет',    `${d.perCabW} Вт`, `× ${d.totalCabs} шт`],
+        ['🔥 Пиковая (макс.)', `${nf(d.maxW)} Вт = ${(d.maxW/1000).toFixed(1)} кВт`, '(белое поле 100%)', '#ff8b8b'],
+        ['📊 Средняя (~35%)',  `${nf(Math.round(d.avgW))} Вт = ${(d.avgW/1000).toFixed(1)} кВт`, '(обычный контент)', '#8fef8f'],
+        ['📐 На м²',         `${d.wPerM2} Вт/м²`, ''],
+        ['⚡ Ток 1 фаза (220В)', `${d.amps1.toFixed(1)} A`, `→ автомат ~${d.brk1} A`],
+        ['⚡ Ток 3 фазы (380В)', `${d.amps3.toFixed(1)} A / фазу`, `→ автомат ~${d.brk3} A/фазу`]
+      ]
+    },
+    {
+      title: '⚖️ ВЕС И ПОДВЕС', color: '#f0a500', bg: '#2a2410', border: '#5a4a1a',
+      rows: [
+        ['📦 Кабинетов',                   `${d.totalCabs} шт × ${d.cabWkg} кг`, ''],
+        ['🏗️ Чистый вес',                 `${d.netKg.toFixed(1)} кг`, '(только кабинеты)'],
+        [`🔌 + Коммутация (${d.rigExtra}%)`, `${d.rigKg.toFixed(1)} кг`, '(вес в сборе)', '#4ec9b0'],
+        [`🛡️ + Запас (${d.reserve}%)`,     `${d.calcKg.toFixed(1)} кг`, '(расчётный для лебёдок)', '#f0a500'],
+        ['🏗️ Нужно лебёдок',              `${d.hoists} шт × ${d.hoistCap} кг`, '', '#ffd479'],
+        ['⚙️ Нагрузка на лебёдку',         `${d.perHoist.toFixed(1)} кг`, `(${d.hoistPct}% от лимита)`,
+          d.hoistPct > 90 ? '#ff6b6b' : d.hoistPct > 75 ? '#f0a500' : '#2ecc71']
+      ]
+    }
+  ];
+
+  // ── ☑️ Фильтруем блоки по чекбоксам (порядок совпадает с allBlocks) ──
+  const chk = id => { const el = getEl(id); return el ? el.checked : true; };
+  const want = [
+    chk('specChkParams'),   // 0 — 📐 Параметры экрана
+    chk('specChkProc'),     // 1 — 🖥️ Видеопроцессор
+    chk('specChkPower'),    // 2 — ⚡ Потребляемая мощность
+    chk('specChkWeight')    // 3 — ⚖️ Вес и подвес
+  ];
+  const blocks = allBlocks.filter((b, i) => want[i]);
+  if (blocks.length === 0) {
+    alert('⚠️ Выберите хотя бы один блок для сохранения!');
+    return;
+  }
+
+  // ── Размеры холста ──
+  const W = 940, PAD = 20;
+  const HEADER_H = 76, ROW_H = 30, TITLE_H = 40, BLOCK_PAD = 16, GAP = 16;
+  let H = HEADER_H;
+  blocks.forEach(b => { H += TITLE_H + b.rows.length * ROW_H + BLOCK_PAD + GAP; });
+  H += 34;   // подвал
+
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d');
+
+  // Фон
+  ctx.fillStyle = '#1e1e1e';
+  ctx.fillRect(0, 0, W, H);
+
+  // ── Шапка ──
+  ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+  ctx.fillStyle = '#4ec9b0';
+  ctx.font = 'bold 26px sans-serif';
+  ctx.fillText('📋 СПЕЦИФИКАЦИЯ LED-ЭКРАНА', PAD, 18);
+  ctx.fillStyle = '#888';
+  ctx.font = '14px sans-serif';
+  const sub = `${engCabType} · ${(d.cx*CAB_SIZE_M).toFixed(1)}×${(d.cy*CAB_SIZE_M).toFixed(1)} м · ${d.resW}×${d.resH} px · ${new Date().toLocaleDateString('ru')}`;
+  ctx.fillText(sub, PAD, 50);
+
+  // ── Блоки ──
+  let y = HEADER_H;
+  blocks.forEach(bl => {
+    const bh = TITLE_H + bl.rows.length * ROW_H + BLOCK_PAD;
+
+    // рамка блока
+    ctx.fillStyle = bl.bg;
+    ctx.strokeStyle = bl.border;
+    ctx.lineWidth = 2;
+    roundRect(ctx, PAD, y, W - PAD * 2, bh, 10);
+    ctx.fill(); ctx.stroke();
+
+    // заголовок блока
+    ctx.fillStyle = bl.color;
+    ctx.font = 'bold 17px sans-serif';
+    ctx.fillText(bl.title, PAD + 18, y + 12);
+
+    // строки
+    let ry = y + TITLE_H;
+    bl.rows.forEach(([label, value, hint, valColor]) => {
+      // подпись
+      ctx.fillStyle = '#9db';
+      ctx.font = '14px sans-serif';
+      ctx.fillText(label, PAD + 18, ry + 6);
+      // значение
+      const vx = PAD + 330;
+      ctx.fillStyle = valColor || '#ffffff';
+      ctx.font = 'bold 15px sans-serif';
+      ctx.fillText(value, vx, ry + 5);
+      // подсказка серым после значения
+      if (hint) {
+        const vw = ctx.measureText(value).width;
+        ctx.fillStyle = '#777';
+        ctx.font = '12px sans-serif';
+        ctx.fillText(hint, vx + vw + 8, ry + 8);
+      }
+      ry += ROW_H;
+    });
+
+    y += bh + GAP;
+  });
+
+  // ── Подвал (только если выводили блок мощности) ──
+  if (want[2]) {
+    ctx.fillStyle = '#555';
+    ctx.font = '12px sans-serif';
+    ctx.fillText('💡 Пик — для расчёта кабеля и автоматов. Средняя — для реального потребления.', PAD, y);
+  }
+
+  // ── Скачивание ──
+  const link = document.createElement('a');
+  link.download = `specs_${engCabType}_${d.cx}x${d.cy}.png`;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
 
 // Сохранить карту PNG
 function engSavePNG() {
