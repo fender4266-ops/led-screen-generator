@@ -494,6 +494,8 @@
     <button onclick="savePNG()">💾 Сохранить общий PNG</button>
     <button onclick="saveAllPNG()" style="background:#8a2be2;">🗂️ Сохранить каждый экран отдельно</button>
   </div>
+  <!-- После строки: <button onclick="engSavePNG()" ...>💾 Сохранить карту PNG</button> -->
+<button onclick="engExportResolumeXML()" style="background:#e67e22;">🎬 Экспорт Resolume XML</button>
   <div class="info" id="info" style="margin-top:12px;"></div>
 </div>
 
@@ -629,6 +631,7 @@
     <div class="row" style="margin-top:10px;">
       <button onclick="engSavePNG()" style="background:#8a2be2;">💾 Сохранить карту PNG</button>
     </div>
+    
 
     <div class="row" style="margin-top:14px; padding-top:14px; border-top:1px solid #444;">
       <span style="font-size:13px; color:#16a085; font-weight:bold;">📋 Что включить в спецификацию:</span>
@@ -3244,6 +3247,234 @@ function engSaveSpecsPNG() {
   link.click();
 }
 
+
+// ─── Экранирование спецсимволов XML ──────────────────────────────────────────
+function escapeXml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
+// ─── 🎬 Экспорт XML для Resolume Arena Advanced Output ───────────────────────
+// ═══════════════════════════════════════════════════════════════════════════
+// 🎬 ЭКСПОРТ В RESOLUME ARENA (полная совместимость с XML-форматом)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function engExportResolumeXML() {
+  readFormToScreen();   // подхватываем несохранённые правки активного экрана
+
+  // Собираем все видимые экраны (поле называется visible, а не hidden!)
+  const visibleScreens = screens.filter(s => s.visible);
+  if (visibleScreens.length === 0) {
+    alert('⚠️ Нет видимых экранов для экспорта!');
+    return;
+  }
+
+  // Размер композиции берём готовой функцией — она уже умеет читать s.fields
+  const comp = getCompBounds();
+  const compW = comp.w;
+  const compH = comp.h;
+  const minX  = comp.offX;   // смещение, чтобы композиция начиналась с (0,0)
+  const minY  = comp.offY;
+
+  if (compW === 0 || compH === 0) {
+    alert('⚠️ Размер композиции = 0. Проверьте настройки экранов.');
+    return;
+  }
+
+  // Генерация uniqueId (миллисекунды + счётчик)
+  const baseId = Date.now() * 1000;
+  let idCounter = 0;
+  const nextId = () => baseId + (idCounter++);
+
+  // Экранирование XML
+  const esc = str => String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;')
+                                  .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+  // Шаблон для ParamRange (копируем структуру из примера)
+  const paramRange = (name, val, min, max, altName = '') => {
+    const alt = altName ? ` altName="${esc(altName)}"` : '';
+    return `
+    <ParamRange name="${esc(name)}"${alt} T="DOUBLE" default="${val}" value="${val}">
+      <PhaseSourceStatic name="PhaseSourceStatic"/>
+      <BehaviourDouble name="BehaviourDouble"/>
+      <ValueRange name="defaultRange" min="${min}" max="${max}"/>
+      <ValueRange name="minMax" min="${min}" max="${max}"/>
+      <ValueRange name="startStop" min="${min}" max="${max}"/>
+    </ParamRange>`;
+  };
+
+  // Генерация Screen
+  const buildScreen = (scr, index) => {
+    // Размер берём той же функцией, что рисует превью — она читает scr.fields
+    const d = getScreenSize(scr);
+    const resW = d.w;
+    const resH = d.h;
+
+    const x = scr.posX - minX;   // нормализуем к (0,0)
+    const y = scr.posY - minY;
+    // Имя лежит в scr.name (дублируется в scr.fields.screenName)
+    const name = esc(scr.name || scr.fields.screenName || `Screen ${index + 1}`);
+    
+    const screenId = nextId();
+    const sliceId = nextId();
+    const deviceNum = index + 1;
+    const deviceId = `VirtualScreen ${deviceNum}`;
+    const idHash = String(10094742552620344504 + deviceNum);  // инкремент от примера
+
+    // InputRect — откуда берём из композиции
+    const x0 = x, y0 = y, x1 = x + resW, y1 = y + resH;
+
+    // OutputRect — куда отдаём (обычно совпадает с InputRect для 1:1)
+    const ox0 = 0, oy0 = 0, ox1 = resW, oy1 = resH;
+
+    // BezierWarper (сетка 4×4 для геометрии)
+    const bw = resW / 3, bh = resH / 3;
+    let warpVerts = '';
+    for (let r = 0; r < 4; r++) {
+      for (let c = 0; c < 4; c++) {
+        warpVerts += `\n\t\t\t\t\t\t\t<v x="${Math.round(c * bw)}" y="${Math.round(r * bh)}"/>`;
+      }
+    }
+
+    return `
+\t\t<Screen name="${name}" uniqueId="${screenId}">
+\t\t\t<Params name="Params">
+\t\t\t\t<Param name="Name" T="STRING" default="" value="${name}"/>
+\t\t\t\t<Param name="Enabled" T="BOOL" default="1" value="1"/>
+\t\t\t\t<Param name="Hidden" T="BOOL" default="0" value="0"/>
+\t\t\t</Params>
+\t\t\t<Params name="Output">
+${paramRange('Opacity', 1, 0, 1)}
+${paramRange('Brightness', 0, -1, 1)}
+${paramRange('Contrast', 0, -1, 1)}
+${paramRange('Red', 0, -1, 1)}
+${paramRange('Green', 0, -1, 1)}
+${paramRange('Blue', 0, -1, 1)}
+\t\t\t</Params>
+\t\t\t<guides>
+\t\t\t\t<ScreenGuide name="ScreenGuide" type="0">
+\t\t\t\t\t<Params name="Params">
+\t\t\t\t\t\t<ParamPixels name="Image"/>
+${paramRange('Opacity', 0.25, 0, 1)}
+\t\t\t\t\t</Params>
+\t\t\t\t</ScreenGuide>
+\t\t\t\t<ScreenGuide name="ScreenGuide" type="1">
+\t\t\t\t\t<Params name="Params">
+\t\t\t\t\t\t<ParamPixels name="Image"/>
+${paramRange('Opacity', 0.25, 0, 1)}
+\t\t\t\t\t</Params>
+\t\t\t\t</ScreenGuide>
+\t\t\t</guides>
+\t\t\t<layers>
+\t\t\t\t<Slice uniqueId="${sliceId}">
+\t\t\t\t\t<Params name="Common">
+\t\t\t\t\t\t<Param name="Name" T="STRING" default="Layer" value="${name}"/>
+\t\t\t\t\t\t<Param name="Enabled" T="BOOL" default="1" value="1"/>
+\t\t\t\t\t</Params>
+\t\t\t\t\t<Params name="Input">
+\t\t\t\t\t\t<ParamChoice name="Input Source" default="0:1" value="0:1" storeChoices="0"/>
+\t\t\t\t\t\t<Param name="Input Opacity" T="BOOL" default="1" value="1"/>
+\t\t\t\t\t\t<Param name="Input Bypass/Solo" T="BOOL" default="1" value="1"/>
+\t\t\t\t\t\t<Param name="SoftEdgeEnable" T="BOOL" default="0" value="0"/>
+\t\t\t\t\t</Params>
+\t\t\t\t\t<Params name="Output">
+\t\t\t\t\t\t<Param name="Flip" T="UINT8" default="0" value="0"/>
+${paramRange('Brightness', 0, -1, 1)}
+${paramRange('Contrast', 0, -1, 1)}
+${paramRange('Red', 0, -1, 1)}
+${paramRange('Green', 0, -1, 1)}
+${paramRange('Blue', 0, -1, 1)}
+\t\t\t\t\t\t<Param name="Is Key" T="BOOL" default="0" value="0"/>
+\t\t\t\t\t\t<Param name="Black BG" T="BOOL" default="0" value="0"/>
+${paramRange('BRed', 0, 0, 0.4, 'Red')}
+${paramRange('BGreen', 0, 0, 0.4, 'Green')}
+${paramRange('BBlue', 0, 0, 0.4, 'Blue')}
+\t\t\t\t\t</Params>
+\t\t\t\t\t<InputRect orientation="0">
+\t\t\t\t\t\t<v x="${x0}" y="${y0}"/>
+\t\t\t\t\t\t<v x="${x1}" y="${y0}"/>
+\t\t\t\t\t\t<v x="${x1}" y="${y1}"/>
+\t\t\t\t\t\t<v x="${x0}" y="${y1}"/>
+\t\t\t\t\t</InputRect>
+\t\t\t\t\t<OutputRect orientation="0">
+\t\t\t\t\t\t<v x="${ox0}" y="${oy0}"/>
+\t\t\t\t\t\t<v x="${ox1}" y="${oy0}"/>
+\t\t\t\t\t\t<v x="${ox1}" y="${oy1}"/>
+\t\t\t\t\t\t<v x="${ox0}" y="${oy1}"/>
+\t\t\t\t\t</OutputRect>
+\t\t\t\t\t<Warper>
+\t\t\t\t\t\t<Params name="Warper">
+\t\t\t\t\t\t\t<ParamChoice name="Point Mode" default="PM_LINEAR" value="PM_LINEAR" storeChoices="0"/>
+\t\t\t\t\t\t\t<Param name="Flip" T="UINT8" default="0" value="0"/>
+\t\t\t\t\t\t</Params>
+\t\t\t\t\t\t<BezierWarper controlWidth="4" controlHeight="4">
+\t\t\t\t\t\t\t<vertices>${warpVerts}
+\t\t\t\t\t\t\t</vertices>
+\t\t\t\t\t\t</BezierWarper>
+\t\t\t\t\t\t<Homography>
+\t\t\t\t\t\t\t<src>
+\t\t\t\t\t\t\t\t<v x="${ox0}" y="${oy0}"/>
+\t\t\t\t\t\t\t\t<v x="${ox1}" y="${oy0}"/>
+\t\t\t\t\t\t\t\t<v x="${ox1}" y="${oy1}"/>
+\t\t\t\t\t\t\t\t<v x="${ox0}" y="${oy1}"/>
+\t\t\t\t\t\t\t</src>
+\t\t\t\t\t\t\t<dst>
+\t\t\t\t\t\t\t\t<v x="${ox0}" y="${oy0}"/>
+\t\t\t\t\t\t\t\t<v x="${ox1}" y="${oy0}"/>
+\t\t\t\t\t\t\t\t<v x="${ox1}" y="${oy1}"/>
+\t\t\t\t\t\t\t\t<v x="${ox0}" y="${oy1}"/>
+\t\t\t\t\t\t\t</dst>
+\t\t\t\t\t\t</Homography>
+\t\t\t\t\t</Warper>
+\t\t\t\t</Slice>
+\t\t\t</layers>
+\t\t\t<OutputDevice>
+\t\t\t\t<OutputDeviceVirtual name="${name}" deviceId="${deviceId}" idHash="${idHash}" width="${resW}" height="${resH}">
+\t\t\t\t\t<Params name="Params">
+${paramRange('Width', resW, 1, 16384)}
+${paramRange('Height', resH, 1, 16384)}
+\t\t\t\t\t</Params>
+\t\t\t\t</OutputDeviceVirtual>
+\t\t\t</OutputDevice>
+\t\t</Screen>`;
+  };
+
+  // Собираем все экраны
+  const screensXML = visibleScreens.map((s, i) => buildScreen(s, i)).join('\n');
+
+  // Полный XML
+  const xml = `<?xml version="1.0" encoding="utf-8"?>
+<XmlState name="LED Multi-Screen Export">
+\t<versionInfo name="Resolume Arena" majorVersion="7" minorVersion="22" microVersion="9" revision="47596"/>
+\t<ScreenSetup name="ScreenSetup">
+\t\t<Params name="ScreenSetupParams"/>
+\t\t<CurrentCompositionTextureSize width="${compW}" height="${compH}"/>
+\t\t<screens>${screensXML}
+\t\t</screens>
+\t\t<SoftEdging>
+\t\t\t<Params name="Soft Edge">
+${paramRange('Gamma Red', 2, 1, 3)}
+${paramRange('Gamma Green', 2, 1, 3)}
+${paramRange('Gamma Blue', 2, 1, 3)}
+${paramRange('Gamma', 1, 0, 1)}
+${paramRange('Luminance', 0.5, 0, 1)}
+${paramRange('Power', 2, 0.1, 7)}
+\t\t\t</Params>
+\t\t</SoftEdging>
+\t</ScreenSetup>
+</XmlState>`;
+
+  // Скачивание
+  const blob = new Blob([xml], { type: 'application/xml' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = `resolume_led_setup_${compW}x${compH}.xml`;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
 
 // Сохранить карту PNG
 function engSavePNG() {
