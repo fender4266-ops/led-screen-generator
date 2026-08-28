@@ -270,6 +270,8 @@
       <button id="btn-direct" onclick="setInput('direct')">Прямой ввод (px)</button>
     </div>
   </div>
+
+
   <div id="input-cab">
     <div class="row" style="margin-top:12px;">
       <label>Ширина экрана (м)<input type="number" id="physW" value="3" step="0.1"></label>
@@ -336,10 +338,12 @@
       <button id="btn-grad"    onclick="setMode('grad')">Градиент</button>
     </div>
   </div>
-  <div class="row modeopt" id="opt-checker" style="margin-top:12px;">
-    <label>Цвет 1<input type="color" id="col1" value="#ffffff"></label>
-    <label>Цвет 2<input type="color" id="col2" value="#000000"></label>
-  </div>
+ <div class="row modeopt" id="opt-checker" style="margin-top:12px;">
+  <label>Цвет 1<input type="color" id="col1" value="#ffffff"></label>
+  <button onclick="swapColors()" title="Поменять цвета местами"
+    style="padding:4px 7px; font-size:13px; background:#444; min-width:unset; align-self:flex-end; margin-bottom:2px;">⇄</button>
+  <label>Цвет 2<input type="color" id="col2" value="#000000"></label>
+</div>
   <div class="row modeopt" id="opt-grad" style="margin-top:12px; display:none;">
     <label>Направление
       <select id="gradDir">
@@ -498,6 +502,12 @@
 <button onclick="engExportResolumeXML()" style="background:#e67e22;">🎬 Экспорт Resolume XML</button>
   <div class="info" id="info" style="margin-top:12px;"></div>
 </div>
+  <div class="row" style="margin-top:14px; padding-top:14px; border-top:1px solid #444;">
+    <button id="btn-cabedit" onclick="toggleCabEdit()" style="background:#c0392b;">✂️ Custom — вырезать кабинеты</button>
+    <button onclick="resetCabs()" style="background:#555;">↩️ Вернуть все</button>
+    <button onclick="invertCabs()" style="background:#555;">🔃 Инвертировать</button>
+    <span id="cabEditInfo" style="font-size:13px; color:#f0a500;"></span>
+  </div>
 
 <div id="pinSpacer"></div>
 <div id="previewWrap">
@@ -566,6 +576,13 @@
 
     <div class="row" id="rectInfoRow" style="margin-top:8px; display:none;">
       <span style="font-size:13px; color:#f0a500;" id="rectInfo"></span>
+    </div>
+
+    <div class="row" style="margin-top:14px; padding-top:14px; border-top:1px solid #444;">
+      <span style="font-size:13px; color:#f0a500; font-weight:bold;">✂️ Форма экрана:</span>
+      <span id="engShapeInfo" style="font-size:13px; color:#ddd;">—</span>
+      <button onclick="engReloadShape()" style="background:#16a085;">🔄 Взять форму с визуализации</button>
+      <button onclick="engClearShape()" style="background:#555;">⬛ Сделать прямоугольным</button>
     </div>
 
     
@@ -685,7 +702,8 @@ function defaultScreen(name, x, y) {
       logo2on:true, logo2corner:'br', logo2size:12, logo2alpha:100, logo2margin:20, logo2bg:false, logo2bgColor:'#000000', logo2bgAlpha:50
     },
     logoData:{1:null,2:null},  // dataURL
-    _logoImg:{1:null,2:null}   // кэш Image (не сериализуем)
+    _logoImg:{1:null,2:null},  // кэш Image (не сериализуем)
+    disabledCabs:{}            // ✂️ вырезанные кабинеты: {"3,2":true, "4,2":true}
   };
 }
 
@@ -774,7 +792,8 @@ function saveSession() {
         name: s.name, posX: s.posX, posY: s.posY, visible: s.visible,
         inputMode: s.inputMode, mode: s.mode,
         fields: s.fields,
-        logoData: s.logoData   // dataURL логотипов тоже сохраняем
+        logoData: s.logoData,        // dataURL логотипов тоже сохраняем
+        disabledCabs: s.disabledCabs // ✂️ вырезанные кабинеты
       }))
     };
     localStorage.setItem(SESSION_KEY, JSON.stringify(data));
@@ -800,7 +819,8 @@ function loadSession() {
       base.mode      = sv.mode      ?? base.mode;
       // Аккуратно домешиваем поля (чтобы новые дефолты не потерялись)
       base.fields    = Object.assign({}, base.fields, sv.fields || {});
-      base.logoData  = Object.assign({}, base.logoData, sv.logoData || {});
+      base.logoData     = Object.assign({}, base.logoData, sv.logoData || {});
+      base.disabledCabs = Object.assign({}, sv.disabledCabs || {});
       return base;
     });
 
@@ -818,6 +838,10 @@ let activeId = 0;
 
 // 🔍 Зум превью: null = авто (вписать в 1000px), число = ручной множитель
 let previewZoom = null;
+
+// Направление авто-раскладки — меняется при каждом нажатии
+let layoutRowReversed = false;
+let layoutColReversed = false;
 
 // Кнопки зума: dir = +1 (приблизить), -1 (отдалить), 0 (сброс на авто)
 function zoomPreview(dir) {
@@ -1095,6 +1119,7 @@ function duplicateScreen() {
   copy.fields.screenName = copy.name;
   copy.logoData = { 1: src.logoData[1], 2: src.logoData[2] };
   copy._logoImg = { 1: null, 2: null };
+  copy.disabledCabs = Object.assign({}, src.disabledCabs);   // ✂️ копируем вырезы
   // Сдвигаем вправо, чтобы не накладывался
   const d = getScreenSize(src);
   copy.posX = src.posX + d.w;
@@ -1154,10 +1179,100 @@ function applyResPreset(val) {
 }
 
 
+
 function setMode(m) {
   mode = m;
   screens[activeId].mode = m;
   applyModeButtons();
+  generate();
+}
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ✂️ CUSTOM — вырезание отдельных кабинетов (нестандартные формы экрана)
+═══════════════════════════════════════════════════════════════════════════ */
+
+let cabEditMode = false;   // включён ли режим вырезания
+
+// Проверка: вырезан ли кабинет
+function isCabOff(s, cx, cy) {
+  return !!(s.disabledCabs && s.disabledCabs[cx + ',' + cy]);
+}
+
+// Включить / выключить режим
+function toggleCabEdit() {
+  cabEditMode = !cabEditMode;
+  const btn = getEl('btn-cabedit');
+  if (btn) {
+    btn.textContent = cabEditMode ? '✅ Готово (выйти из Custom)' : '✂️ Custom — вырезать кабинеты';
+    btn.style.background = cabEditMode ? '#2ecc71' : '#c0392b';
+    btn.style.color = cabEditMode ? '#111' : '#fff';
+  }
+  const canvas = getEl('preview');
+  if (canvas) canvas.style.cursor = cabEditMode ? 'crosshair' : 'grab';
+  updateCabInfo();
+  renderPreview();
+}
+
+// Подпись: сколько вырезано у активного экрана
+function updateCabInfo() {
+  const el = getEl('cabEditInfo');
+  if (!el) return;
+  const s = screens[activeId];
+  const off = Object.keys(s.disabledCabs || {}).length;
+  const d = getScreenSize(s);
+  const total = d.cabsX * d.cabsY;
+  if (cabEditMode) {
+    el.innerHTML = `🖱️ Кликай по кабинетам в превью (можно вести зажатой кнопкой) &nbsp;|&nbsp; вырезано: <b>${off}</b> из ${total} → осталось <b>${total - off}</b>`;
+  } else {
+    el.innerHTML = off > 0
+      ? `✂️ Вырезано: <b>${off}</b> каб. &nbsp;|&nbsp; активных: <b>${total - off}</b> из ${total}`
+      : '';
+  }
+}
+
+// Вернуть все кабинеты активного экрана
+function resetCabs() {
+  screens[activeId].disabledCabs = {};
+  updateCabInfo();
+  generate();
+}
+
+// Инвертировать: вырезанные вернуть, целые — вырезать
+function invertCabs() {
+  const s = screens[activeId];
+  const d = getScreenSize(s);
+  const next = {};
+  for (let y = 0; y < d.cabsY; y++) {
+    for (let x = 0; x < d.cabsX; x++) {
+      if (!isCabOff(s, x, y)) next[x + ',' + y] = true;
+    }
+  }
+  s.disabledCabs = next;
+  updateCabInfo();
+  generate();
+}
+
+// Найти кабинет под точкой композиции → {s, cx, cy, key}
+function cabAtPoint(px, py) {
+  for (let i = screens.length - 1; i >= 0; i--) {
+    const s = screens[i];
+    if (!s.visible) continue;
+    const d = getScreenSize(s);
+    if (px >= s.posX && px < s.posX + d.w && py >= s.posY && py < s.posY + d.h) {
+      const cx = Math.floor((px - s.posX) / d.cabPxW);
+      const cy = Math.floor((py - s.posY) / d.cabPxH);
+      if (cx < 0 || cy < 0 || cx >= d.cabsX || cy >= d.cabsY) return null;
+      return { idx: i, s, cx, cy, key: cx + ',' + cy };
+    }
+  }
+  return null;
+}
+
+function swapColors() {
+  const c1 = getEl('col1'), c2 = getEl('col2');
+  [c1.value, c2.value] = [c2.value, c1.value];
+  readFormToScreen();
   generate();
 }
 
@@ -1186,12 +1301,33 @@ function getScreenSize(s) {
 // ─── Авто-раскладка всех экранов ─────────────────────────────────────────────
 function autoLayout(dir) {
   readFormToScreen();
-  let cursor = 0;
-  screens.forEach(s => {
-    const d = getScreenSize(s);
-    if (dir === 'row') { s.posX = cursor; s.posY = 0; cursor += d.w; }
-    else               { s.posY = cursor; s.posX = 0; cursor += d.h; }
-  });
+
+  if (dir === 'row') {
+    layoutRowReversed = !layoutRowReversed;
+    // [...screens] — создаём копию, чтобы .reverse() не сломал оригинальный массив
+    const order = layoutRowReversed ? [...screens].reverse() : [...screens];
+    let cursor = 0;
+    order.forEach(s => {
+      const d = getScreenSize(s);
+      s.posX = cursor; s.posY = 0;
+      cursor += d.w;
+    });
+    const btn = document.querySelector('button[onclick="autoLayout(\'row\')"]');
+    if (btn) btn.innerHTML = layoutRowReversed ? '↩️ В ряд (обратный)' : '↔️ В ряд';
+
+  } else {
+    layoutColReversed = !layoutColReversed;
+    const order = layoutColReversed ? [...screens].reverse() : [...screens];
+    let cursor = 0;
+    order.forEach(s => {
+      const d = getScreenSize(s);
+      s.posX = 0; s.posY = cursor;
+      cursor += d.h;
+    });
+    const btn = document.querySelector('button[onclick="autoLayout(\'col\')"]');
+    if (btn) btn.innerHTML = layoutColReversed ? '↩️ В столбец (обратный)' : '↕️ В столбец';
+  }
+
   writeScreenToForm();
   generate();
 }
@@ -1260,6 +1396,14 @@ function drawScreenBackground(ctx, s, d) {
     g.addColorStop(1, f.gradB);
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
+  }
+
+  // ✂️ Вырезаем отключённые кабинеты (дырки в экране)
+  if (s.disabledCabs) {
+    Object.keys(s.disabledCabs).forEach(key => {
+      const [cx, cy] = key.split(',').map(Number);
+      ctx.clearRect(cx * d.cabPxW, cy * d.cabPxH, d.cabPxW, d.cabPxH);
+    });
   }
 }
 
@@ -1491,11 +1635,11 @@ function drawComposition(ctx, comp, withOverlay) {
       ctx.translate(s.posX, s.posY);
       ctx.strokeStyle = 'rgba(120,120,120,0.6)';
       ctx.lineWidth = Math.max(1, Math.round(d.cabPxW / 96));
-      for (let x = 0; x <= d.cabsX; x++) {
-        ctx.beginPath(); ctx.moveTo(x * d.cabPxW, 0); ctx.lineTo(x * d.cabPxW, d.h); ctx.stroke();
-      }
-      for (let y = 0; y <= d.cabsY; y++) {
-        ctx.beginPath(); ctx.moveTo(0, y * d.cabPxH); ctx.lineTo(d.w, y * d.cabPxH); ctx.stroke();
+      for (let y = 0; y < d.cabsY; y++) {
+        for (let x = 0; x < d.cabsX; x++) {
+          if (isCabOff(s, x, y)) continue;   // ✂️ вокруг дырок сетку не рисуем
+          ctx.strokeRect(x * d.cabPxW, y * d.cabPxH, d.cabPxW, d.cabPxH);
+        }
       }
       ctx.restore();
     });
@@ -1514,12 +1658,33 @@ function drawComposition(ctx, comp, withOverlay) {
       let num = 1;
       for (let y = 0; y < d.cabsY; y++)
         for (let x = 0; x < d.cabsX; x++) {
+          if (isCabOff(s, x, y)) continue;          // ✂️ вырезанные не нумеруем
           ctx.fillText(num, x * d.cabPxW + d.cabPxW / 2, y * d.cabPxH + d.cabPxH / 2);
           num++;
         }
       ctx.restore();
     });
   }
+
+  // ─── ✂️ РЕЖИМ CUSTOM: подсвечиваем сетку кабинетов активного экрана ───
+  if (cabEditMode) {
+    screens.forEach((s, idx) => {
+      if (!s.visible || idx !== activeId) return;
+      const d = getScreenSize(s);
+      ctx.save();
+      ctx.translate(s.posX, s.posY);
+      ctx.strokeStyle = 'rgba(255,60,60,0.9)';
+      ctx.lineWidth = Math.max(2, Math.round(d.cabPxW / 48));
+      for (let x = 0; x <= d.cabsX; x++) {
+        ctx.beginPath(); ctx.moveTo(x * d.cabPxW, 0); ctx.lineTo(x * d.cabPxW, d.h); ctx.stroke();
+      }
+      for (let y = 0; y <= d.cabsY; y++) {
+        ctx.beginPath(); ctx.moveTo(0, y * d.cabPxH); ctx.lineTo(d.w, y * d.cabPxH); ctx.stroke();
+      }
+      ctx.restore();
+    });
+  }
+
 
   // ─── 2.5️⃣ ПРОХОД: ПЕРЕДНИЙ ПЛАН (крест + лого + ТЕКСТ) ПОВЕРХ сетки/номеров ✅ ───
   screens.forEach((s, idx) => {
@@ -1602,6 +1767,9 @@ function renderPreview() {
     const visCount = screens.filter(s => s.visible).length;
   getEl('info').innerHTML =
     `Экранов: <b>${screens.length}</b> (видимых: <b>${visCount}</b>) &nbsp;|&nbsp; Общий PNG: <b>${comp.w} × ${comp.h} px</b>`;
+
+  if (typeof updateCabInfo === 'function') updateCabInfo();
+
 
   let ci = 'Композиция: ';
   ci += screens.map(s => {
@@ -1699,21 +1867,31 @@ function saveAllPNG() {
     drawScreenBackground(ctx, s, d);
     ctx.restore();
 
-    // 2️⃣ Линии сетки (ПОД текстом)
+    // 2️⃣ Линии сетки (ПОД текстом) — ✂️ рисуем рамку только вокруг живых кабинетов
     if (pngOverlay && pngOverlay.lines) {
       ctx.strokeStyle = 'rgba(120,120,120,0.6)';
       ctx.lineWidth = Math.max(1, Math.round(d.cabPxW / 96));
-      for (let x = 0; x <= d.cabsX; x++) { ctx.beginPath(); ctx.moveTo(x*d.cabPxW,0); ctx.lineTo(x*d.cabPxW,d.h); ctx.stroke(); }
-      for (let y = 0; y <= d.cabsY; y++) { ctx.beginPath(); ctx.moveTo(0,y*d.cabPxH); ctx.lineTo(d.w,y*d.cabPxH); ctx.stroke(); }
+      for (let y = 0; y < d.cabsY; y++) {
+        for (let x = 0; x < d.cabsX; x++) {
+          if (isCabOff(s, x, y)) continue;
+          ctx.strokeRect(x*d.cabPxW, y*d.cabPxH, d.cabPxW, d.cabPxH);
+        }
+      }
     }
 
-    // 3️⃣ Номера кабинетов (ПОД текстом)
+    // 3️⃣ Номера кабинетов (ПОД текстом) — ✂️ вырезанные пропускаем
     if (pngOverlay && pngOverlay.nums) {
       ctx.fillStyle = '#ff8800';
       ctx.font = `${Math.round(d.cabPxH/6)}px sans-serif`;
       ctx.textAlign='center'; ctx.textBaseline='middle';
       let num=1;
-      for (let y=0;y<d.cabsY;y++) for (let x=0;x<d.cabsX;x++){ ctx.fillText(num, x*d.cabPxW+d.cabPxW/2, y*d.cabPxH+d.cabPxH/2); num++; }
+      for (let y=0;y<d.cabsY;y++) {
+        for (let x=0;x<d.cabsX;x++) {
+          if (isCabOff(s, x, y)) continue;   // ✂️ дырка — не рисуем и не считаем
+          ctx.fillText(num, x*d.cabPxW+d.cabPxW/2, y*d.cabPxH+d.cabPxH/2);
+          num++;
+        }
+      }
     }
 
     // 4️⃣ ПЕРЕДНИЙ план: крест + лого + ТЕКСТ (ПОВЕРХ сетки/номеров) ✅
@@ -1787,8 +1965,29 @@ document.querySelectorAll('#page-visual input, #page-visual select').forEach(el 
     return -1;
   }
 
+  let painting = false, paintTo = true;   // ✂️ режим "рисования" вырезов
+
   canvas.addEventListener('mousedown', (e) => {
     const p = toComp(e);
+
+    // ✂️ РЕЖИМ CUSTOM — вырезаем/возвращаем кабинеты вместо перетаскивания
+    if (cabEditMode) {
+      const hit = cabAtPoint(p.x, p.y);
+      if (!hit) return;
+      if (hit.idx !== activeId) {          // кликнули по другому экрану — переключаемся
+        readFormToScreen(); activeId = hit.idx; writeScreenToForm(); renderTabs();
+      }
+      const s = screens[activeId];
+      if (!s.disabledCabs) s.disabledCabs = {};
+      // Определяем действие по первой ячейке: целая → вырезаем, вырезанная → возвращаем
+      paintTo = !s.disabledCabs[hit.key];
+      if (paintTo) s.disabledCabs[hit.key] = true; else delete s.disabledCabs[hit.key];
+      painting = true;
+      updateCabInfo();
+      renderPreview();
+      return;
+    }
+
     const idx = hitTest(p.x, p.y);
     if (idx === -1) return;
     dragging = true;
@@ -1806,6 +2005,17 @@ document.querySelectorAll('#page-visual input, #page-visual select').forEach(el 
   });
 
   window.addEventListener('mousemove', (e) => {
+    // ✂️ Протягивание — вырезаем целую полосу кабинетов
+    if (painting) {
+      const hit = cabAtPoint(toComp(e).x, toComp(e).y);
+      if (hit && hit.idx === activeId) {
+        const s = screens[activeId];
+        if (paintTo) s.disabledCabs[hit.key] = true; else delete s.disabledCabs[hit.key];
+        updateCabInfo();
+        renderPreview();
+      }
+      return;
+    }
     if (!dragging) return;
     const p = toComp(e);
     let nx = Math.round(p.x - offX);
@@ -1851,6 +2061,7 @@ document.querySelectorAll('#page-visual input, #page-visual select').forEach(el 
   });
 
   window.addEventListener('mouseup', () => {
+    if (painting) { painting = false; generate(); return; }
     if (dragging) {
       dragging = false;
       dragIdx = -1;
@@ -1861,7 +2072,8 @@ document.querySelectorAll('#page-visual input, #page-visual select').forEach(el 
 
   // Курсор-подсказка при наведении
   canvas.addEventListener('mousemove', (e) => {
-    if (dragging) return;
+    if (dragging || painting) return;
+    if (cabEditMode) { canvas.style.cursor = 'crosshair'; return; }
     const p = toComp(e);
     canvas.style.cursor = (hitTest(p.x, p.y) !== -1) ? 'grab' : 'default';
   });
@@ -2037,6 +2249,9 @@ function syncVisualToEngineer() {
   const d = getScreenSize(s);           // содержит physW, physH, cabPxW
   const f = s.fields;
 
+  // ✂️ Переносим форму экрана (вырезанные кабинеты) в инженерку
+  engDisabled = Object.assign({}, s.disabledCabs || {});
+
   // Физические размеры (метры)
   let mw = 0, mh = 0;
   if (s.inputMode === 'cab') {
@@ -2142,6 +2357,48 @@ const CAB_SIZE_M = 0.5;   // все кабинеты 0.5×0.5 м
 let engCabType = 'P3.9';
 let engProcChoice = 'auto';   // 🖥️ выбор процессора: 'auto' или индекс "0".."5"
 
+/* ═══ ✂️ Маска вырезанных кабинетов для инженерки ═══
+   Копируется из активного экрана визуализации при переходе на вкладку.   */
+let engDisabled = {};
+
+// Вырезан ли кабинет (x,y)?
+function engIsOff(x, y) { return !!engDisabled[x + ',' + y]; }
+
+// Сколько РЕАЛЬНЫХ кабинетов в поле cx×cy (без дырок)
+function engCountActive(cx, cy) {
+  let n = 0;
+  for (let y = 0; y < cy; y++)
+    for (let x = 0; x < cx; x++)
+      if (!engIsOff(x, y)) n++;
+  return n;
+}
+
+// Сколько вырезано в пределах текущего поля
+function engCountOff(cx, cy) { return cx * cy - engCountActive(cx, cy); }
+
+// 🔄 Перечитать форму из активного экрана визуализации
+function engReloadShape() {
+  readFormToScreen();
+  engDisabled = Object.assign({}, screens[activeId].disabledCabs || {});
+  engCalc();
+}
+
+// ⬛ Сбросить форму до полного прямоугольника
+function engClearShape() {
+  engDisabled = {};
+  engCalc();
+}
+
+// Подпись о текущей форме
+function engUpdateShapeInfo(cx, cy) {
+  const el = getEl('engShapeInfo');
+  if (!el) return;
+  const off = engCountOff(cx, cy);
+  el.innerHTML = off > 0
+    ? `<b style="color:#f0a500;">CUSTOM</b> — вырезано <b>${off}</b> из ${cx * cy} каб.`
+    : `<span style="color:#999;">прямоугольник ${cx}×${cy}</span>`;
+}
+
 // Вызывается при смене процессора в выпадающем списке (внутри блока результата)
 function engSetProc(val) {
   engProcChoice = val;
@@ -2166,6 +2423,7 @@ function saveEngSession() {
       hoistCap: getEl('engHoistCap') ? getEl('engHoistCap').value : '250',
       mapSpecs: getEl('engMapSpecs') ? getEl('engMapSpecs').checked : true,
       procSelect: engProcChoice,
+      disabled: engDisabled,          // ✂️ форма экрана
       specParams: getEl('specChkParams') ? getEl('specChkParams').checked : true,
       specProc:   getEl('specChkProc')   ? getEl('specChkProc').checked   : true,
       specPower:  getEl('specChkPower')  ? getEl('specChkPower').checked  : true,
@@ -2198,6 +2456,7 @@ function loadEngSession() {
     if (d.hoistCap && getEl('engHoistCap')) getEl('engHoistCap').value = d.hoistCap;
     if (d.mapSpecs !== undefined && getEl('engMapSpecs')) getEl('engMapSpecs').checked = d.mapSpecs;
     if (d.procSelect) engProcChoice = d.procSelect;
+    engDisabled = Object.assign({}, d.disabled || {});   // ✂️ восстанавливаем форму
     // ☑️ Восстанавливаем галочки блоков спецификации
     const setChk = (id, v) => { const el = getEl(id); if (el && v !== undefined) el.checked = v; };
     setChk('specChkParams', d.specParams);
@@ -2262,9 +2521,13 @@ function engCalc() {
   const cy = parseInt(cyEl.value) || 0;
   if (cx < 1 || cy < 1) { getEl('engResult').innerHTML = 'Введите размеры.'; return; }
 
-  const totalCabs = cx * cy;
-  const totalPx = totalCabs * cab.px * cab.px;
-  const resW = cx * cab.px, resH = cy * cab.px;
+  // ✂️ Считаем только реальные кабинеты (без вырезанных)
+  const totalCabs = engCountActive(cx, cy);
+  const cutCabs   = cx * cy - totalCabs;
+  const totalPx   = totalCabs * cab.px * cab.px;
+  const resW = cx * cab.px, resH = cy * cab.px;   // габарит остаётся прежним
+
+  if (totalCabs < 1) { getEl('engResult').innerHTML = '⚠️ Все кабинеты вырезаны.'; return; }
 
   const dir = parseInt(getEl('engDir').value);
   const snake = buildSnake(cx, cy, cab.perLine, dir);   // ← вот этой строки не хватало!
@@ -2309,7 +2572,11 @@ function engCalc() {
   html += `📐 Размер: <b>${(cx*CAB_SIZE_M).toFixed(1)} × ${(cy*CAB_SIZE_M).toFixed(1)} м</b> &nbsp;|&nbsp; <b>${cx} × ${cy}</b> каб<br>`;
   html += `🧮 Разрешение: <b>${resW} × ${resH} px</b><br>`;
   html += `🔢 Кабинетов: <b>${totalCabs}</b> &nbsp;|&nbsp; Приёмных карт: <b>${totalCabs}</b><br>`;
-  html += `🖼️ Пикселей: <b>${totalPx.toLocaleString('ru')}</b><br>`;
+  if (cutCabs > 0) {
+    html += `✂️ Форма: <b style="color:#f0a500;">CUSTOM</b> — вырезано <b>${cutCabs}</b> каб. `;
+    html += `<span style="font-size:12px;color:#999;">(габарит ${cx}×${cy} = ${cx*cy}, экономия ${Math.round(cutCabs/(cx*cy)*100)}%)</span><br>`;
+  }
+  html += `🖼️ Пикселей: <b>${totalPx.toLocaleString('ru')}</b><br>`; 
   html += `<hr style="border-color:#444;">`;
    // Режим зон / обычный
   const rectModeOn = getEl('engRectMode') && getEl('engRectMode').checked;
@@ -2395,6 +2662,7 @@ function engCalc() {
     perProc: masterPerProc,
     ofLine: procOfLine
   });
+  engUpdateShapeInfo(cx, cy);   // ✂️ подпись о форме
   saveEngSession();   // 💾 автосохранение инженерных настроек
 }
 
@@ -2522,8 +2790,8 @@ function buildPowerCard(totalCabs, cab, cx, cy) {
   const maxKW = maxW / 1000;
   const avgKW = avgW / 1000;
 
-  // Площадь экрана (м²)
-  const areaM2 = (cx * CAB_SIZE_M) * (cy * CAB_SIZE_M);
+  // Площадь экрана (м²) — ✂️ по РЕАЛЬНЫМ кабинетам, а не по габариту
+  const areaM2 = totalCabs * CAB_SIZE_M * CAB_SIZE_M;
   const wPerM2 = areaM2 > 0 ? Math.round(maxW / areaM2) : 0;
 
   // Ток при 220В (однофазн.) и распределение по 3 фазам (380В)
@@ -2586,7 +2854,9 @@ function bestZoneForArea(w, h, perLine) {
 }
 
 function findRectTiling(cx, cy, perLine) {
-  const occupied = Array.from({length: cy}, () => Array(cx).fill(false));
+  // ✂️ Вырезанные кабинеты сразу помечаем «занятыми» — зоны их обойдут
+  const occupied = Array.from({length: cy}, (_, y) =>
+    Array.from({length: cx}, (_, x) => engIsOff(x, y)));
   const zones = [];
 
   for (let y = 0; y < cy; y++) {
@@ -2671,111 +2941,108 @@ function buildSnake(cx, cy, perLine, dir) {
   const vertical = (dir === 1 || dir === 3 || dir === 5 || dir === 7);
   const lines = [];
 
-  if (vertical) {
-    // Разводка колоннами (вертикальная змейка)
+   if (vertical) {
+    // Разводка колоннами (вертикальная змейка) — ✂️ с учётом вырезанных
     const leftToRight = (dir === 1 || dir === 5);
     const downFirst   = (dir === 1 || dir === 3);
-
-    // Сколько целых колонн влезает в одну линию (по лимиту perLine)
-    const colsPerLine = Math.max(1, Math.floor(perLine / cy));
-    const unitLen = cy;                       // высота колонны
-    const unitsPerLine = (cy <= perLine) ? colsPerLine : 0;
-    const effPerLine = (cy <= perLine) ? colsPerLine * cy : perLine;
 
     // порядок обхода колонн
     const cols = [];
     for (let i = 0; i < cx; i++) cols.push(leftToRight ? i : cx - 1 - i);
 
-    let current = [];
-    let colsInCurrent = 0;
-    let flip = 0;   // для змейки: чётная колонна вниз, нечётная вверх
+    // Собираем ЖИВЫЕ ячейки каждой колонны (сверху вниз), пустые колонны выкидываем
+    const colCells = cols.map(col => {
+      const cells = [];
+      for (let r = 0; r < cy; r++) if (!engIsOff(col, r)) cells.push({ x: col, y: r });
+      return cells;
+    }).filter(c => c.length > 0);
 
-    const pushCol = (col) => {
-      const goingDown = downFirst ? (flip % 2 === 0) : (flip % 2 === 1);
-      for (let r = 0; r < cy; r++) {
-        const row = goingDown ? r : cy - 1 - r;
-        current.push({ x: col, y: row });
-      }
-      flip++;
-    };
+    let current = [], flip = 0, colsInCurrent = 0;
+    let maxCols = 0, maxUnit = 0;
 
-    if (cy <= perLine) {
-      // колонна целиком влезает — группируем по colsPerLine колонн в линию
-      cols.forEach(col => {
-        pushCol(col);
-        colsInCurrent++;
-        if (colsInCurrent >= colsPerLine) {
-          lines.push(current);
-          current = [];
-          colsInCurrent = 0;
-          flip = 0;
-        }
-      });
-      if (current.length) lines.push(current);
-    } else {
-      // колонна ДЛИННЕЕ лимита — рвём вынужденно
-      cols.forEach(col => {
-        const goingDown = downFirst ? true : false;
+    colCells.forEach(cells => {
+      maxUnit = Math.max(maxUnit, cells.length);
+
+      // Колонна длиннее лимита — рвём её вынужденно
+      if (cells.length > perLine) {
+        if (current.length) { lines.push(current); current = []; flip = 0; colsInCurrent = 0; }
+        const ordered = downFirst ? cells : [...cells].reverse();
         let seg = [];
-        for (let r = 0; r < cy; r++) {
-          const row = goingDown ? r : cy - 1 - r;
-          seg.push({ x: col, y: row });
+        ordered.forEach(c => {
+          seg.push(c);
           if (seg.length >= perLine) { lines.push(seg); seg = []; }
-        }
+        });
         if (seg.length) lines.push(seg);
-      });
-    }
+        return;
+      }
+
+      // Не влезает в текущую линию — закрываем её
+      if (current.length + cells.length > perLine) {
+        lines.push(current);
+        maxCols = Math.max(maxCols, colsInCurrent);
+        current = []; flip = 0; colsInCurrent = 0;
+      }
+
+      const goingDown = downFirst ? (flip % 2 === 0) : (flip % 2 === 1);
+      current.push(...(goingDown ? cells : [...cells].reverse()));
+      flip++; colsInCurrent++;
+    });
+    if (current.length) { lines.push(current); maxCols = Math.max(maxCols, colsInCurrent); }
+
+    const effPerLine  = lines.reduce((m, l) => Math.max(m, l.length), 0);
+    const unitLen     = maxUnit;
+    const unitsPerLine = (maxUnit <= perLine) ? maxCols : 0;
 
     return { lines, effPerLine, unitLen, unitsPerLine };
 
   } else {
-    // Разводка строками (горизонтальная змейка)
+    // Разводка строками (горизонтальная змейка) — ✂️ с учётом вырезанных
     const topToBottom      = (dir === 2 || dir === 4);
     const leftToRightStart = (dir === 2 || dir === 6);
-
-    const rowsPerLine = Math.max(1, Math.floor(perLine / cx));
-    const unitLen = cx;                       // длина строки
-    const unitsPerLine = (cx <= perLine) ? rowsPerLine : 0;
-    const effPerLine = (cx <= perLine) ? rowsPerLine * cx : perLine;
 
     const rows = [];
     for (let i = 0; i < cy; i++) rows.push(topToBottom ? i : cy - 1 - i);
 
-    let current = [];
-    let rowsInCurrent = 0;
-    let flip = 0;
+    // Живые ячейки каждой строки (слева направо)
+    const rowCells = rows.map(row => {
+      const cells = [];
+      for (let c = 0; c < cx; c++) if (!engIsOff(c, row)) cells.push({ x: c, y: row });
+      return cells;
+    }).filter(c => c.length > 0);
 
-    const pushRow = (row) => {
-      const goingRight = leftToRightStart ? (flip % 2 === 0) : (flip % 2 === 1);
-      for (let c = 0; c < cx; c++) {
-        const col = goingRight ? c : cx - 1 - c;
-        current.push({ x: col, y: row });
-      }
-      flip++;
-    };
+    let current = [], flip = 0, rowsInCurrent = 0;
+    let maxRows = 0, maxUnit = 0;
 
-    if (cx <= perLine) {
-      rows.forEach(row => {
-        pushRow(row);
-        rowsInCurrent++;
-        if (rowsInCurrent >= rowsPerLine) {
-          lines.push(current);
-          current = [];
-          rowsInCurrent = 0;
-          flip = 0;
-        }
-      });
-      if (current.length) lines.push(current);
-    } else {
-      rows.forEach(row => {
+    rowCells.forEach(cells => {
+      maxUnit = Math.max(maxUnit, cells.length);
+
+      if (cells.length > perLine) {
+        if (current.length) { lines.push(current); current = []; flip = 0; rowsInCurrent = 0; }
+        const ordered = leftToRightStart ? cells : [...cells].reverse();
         let seg = [];
-        for (let c = 0; c < cx; c++) {
-          seg.push({ x: c, y: row });
+        ordered.forEach(c => {
+          seg.push(c);
           if (seg.length >= perLine) { lines.push(seg); seg = []; }
-        }
+        });
         if (seg.length) lines.push(seg);
-      });
-    }
+        return;
+      }
+
+      if (current.length + cells.length > perLine) {
+        lines.push(current);
+        maxRows = Math.max(maxRows, rowsInCurrent);
+        current = []; flip = 0; rowsInCurrent = 0;
+      }
+
+      const goingRight = leftToRightStart ? (flip % 2 === 0) : (flip % 2 === 1);
+      current.push(...(goingRight ? cells : [...cells].reverse()));
+      flip++; rowsInCurrent++;
+    });
+    if (current.length) { lines.push(current); maxRows = Math.max(maxRows, rowsInCurrent); }
+
+    const effPerLine  = lines.reduce((m, l) => Math.max(m, l.length), 0);
+    const unitLen     = maxUnit;
+    const unitsPerLine = (maxUnit <= perLine) ? maxRows : 0;
 
     return { lines, effPerLine, unitLen, unitsPerLine };
   }
@@ -2798,7 +3065,9 @@ function engDrawMap(cx, cy, cab, lines, resW, resH, extra, procMap) {
   const showSpecs = extra && specsEl && specsEl.checked;
 
   // Текст заголовка
-  const title = `${engCabType} · ${cx}×${cy} каб · ${resW}×${resH}px · Master линий: ${lines.length} (+${lines.length} backup)`;
+  const cutN = engCountOff(cx, cy);
+  const shapeTxt = cutN > 0 ? ` · ✂️ ${cx * cy - cutN} каб (вырезано ${cutN})` : '';
+  const title = `${engCabType} · ${cx}×${cy}${shapeTxt} · ${resW}×${resH}px · Master линий: ${lines.length} (+${lines.length} backup)`;
 
   // Измеряем ширину заголовка временным контекстом
   const measureCtx = canvas.getContext('2d');
@@ -2841,6 +3110,7 @@ function engDrawMap(cx, cy, cab, lines, resW, resH, extra, procMap) {
   // Рисуем клетки кабинетов
   for (let y = 0; y < cy; y++) {
     for (let x = 0; x < cx; x++) {
+      if (engIsOff(x, y)) continue;        // ✂️ вырезанный кабинет — пустое место
       const info = cellInfo[x + ',' + y];
       const px = ox + x * cellSize;
       const py = oy + y * cellSize;
@@ -3035,10 +3305,12 @@ function engBuildSpecsData() {
   const cy = parseInt(getEl('engCY').value) || 0;
   if (cx < 1 || cy < 1) return null;
 
-  const totalCabs = cx * cy;
+  const totalCabs = engCountActive(cx, cy);      // ✂️ только живые
+  const cutCabs   = cx * cy - totalCabs;
   const totalPx   = totalCabs * cab.px * cab.px;
   const resW = cx * cab.px, resH = cy * cab.px;
-  const areaM2 = (cx * CAB_SIZE_M) * (cy * CAB_SIZE_M);
+  const areaM2 = totalCabs * CAB_SIZE_M * CAB_SIZE_M;
+  if (totalCabs < 1) return null;
 
   // ── Линии (порты) ──
   const dir = parseInt(getEl('engDir').value);
@@ -3089,7 +3361,7 @@ function engBuildSpecsData() {
   const hoistPct = hoistCap > 0 ? Math.round(perHoist / hoistCap * 100) : 0;
 
   return {
-    cab, cx, cy, totalCabs, totalPx, resW, resH, areaM2,
+    cab, cx, cy, totalCabs, cutCabs, totalPx, resW, resH, areaM2,
     numLines, chosen, needCount, master, loadPct, isManual: (procSel !== 'auto'),
     perCabW, maxW, avgW, wPerM2, amps1, amps3, brk1, brk3,
     cabWkg, rigExtra, reserve, hoistCap, netKg, rigKg, calcKg, hoists, perHoist, hoistPct
@@ -3110,7 +3382,9 @@ function engSaveSpecsPNG() {
       rows: [
         ['📦 Тип кабинета',  `${engCabType}`, `(${d.cab.px}×${d.cab.px} px · ${CAB_SIZE_M}×${CAB_SIZE_M} м)`],
         ['📐 Размер экрана', `${(d.cx*CAB_SIZE_M).toFixed(1)} × ${(d.cy*CAB_SIZE_M).toFixed(1)} м`, `(площадь ${d.areaM2.toFixed(1)} м²)`],
-        ['🔢 Кабинетов',     `${d.cx} × ${d.cy} = ${d.totalCabs} шт`, '(= приёмных карт)'],
+        ['🔢 Кабинетов', d.cutCabs > 0 ? `${d.totalCabs} шт` : `${d.cx} × ${d.cy} = ${d.totalCabs} шт`,
+          d.cutCabs > 0 ? `(габарит ${d.cx}×${d.cy}, вырезано ${d.cutCabs}) ✂️` : '(= приёмных карт)',
+          d.cutCabs > 0 ? '#f0a500' : null],
         ['🧮 Разрешение',    `${d.resW} × ${d.resH} px`, ''],
         ['🖼️ Всего пикселей', `${nf(d.totalPx)} px`, '']
       ]
