@@ -20,7 +20,7 @@
   select { padding:5px; background:#1e1e1e; color:#ddd; border:1px solid #555; border-radius:4px; }
   .info { font-size:14px; line-height:1.6; }
   .info b { color:#4ec9b0; }
-  #preview { border:1px solid #444; max-width:100%; image-rendering:pixelated; margin-top:10px; background:#000; cursor:grab; }
+  #preview { border:1px solid #444; max-width:100%; image-rendering:pixelated; margin-top:10px; background:#161616; cursor:grab; }
 
   /* 📌 Закреплённое превью сверху экрана */
   #previewWrap.pinned {
@@ -1399,11 +1399,12 @@ function drawScreenBackground(ctx, s, d) {
     ctx.fillRect(0, 0, W, H);
   }
 
-  // ✂️ Вырезаем отключённые кабинеты (дырки в экране)
+  // ✂️ Вырезаем отключённые кабинеты — заливаем цветом фона (не clearRect!)
   if (s.disabledCabs) {
+    ctx.fillStyle = '#161616';   // темно-серый фон, как у canvas
     Object.keys(s.disabledCabs).forEach(key => {
       const [cx, cy] = key.split(',').map(Number);
-      ctx.clearRect(cx * d.cabPxW, cy * d.cabPxH, d.cabPxW, d.cabPxH);
+      ctx.fillRect(cx * d.cabPxW, cy * d.cabPxH, d.cabPxW, d.cabPxH);
     });
   }
 }
@@ -1546,11 +1547,22 @@ function drawCenterBlock(ctx, s, d) {
     const boxH = lines.length * lineH + padY * 2 - (lineH - fontSize);
     const boxX = textCX - boxW / 2;
     const boxY = textTopY - lineH / 2 - padY + (lineH - fontSize) / 2;
+    const r_ = fontSize * 0.3;
+
+    // заливка подложки
     const [r, g, bv] = hexToRgb(f.txtBgColor);
     const a = parseFloat(f.txtBgAlpha) / 100;
     ctx.fillStyle = `rgba(${r},${g},${bv},${a})`;
-    roundRect(ctx, boxX, boxY, boxW, boxH, fontSize * 0.3);
+    roundRect(ctx, boxX, boxY, boxW, boxH, r_);
     ctx.fill();
+
+    // рамка подложки (тот же цвет текста, полупрозрачная)
+    const [tr, tg, tb] = hexToRgb(f.txtColor);
+    ctx.strokeStyle = `rgba(${tr},${tg},${tb},0.6)`;
+    ctx.lineWidth = Math.max(1, fontSize * 0.05);
+    ctx.lineJoin = 'round';
+    roundRect(ctx, boxX, boxY, boxW, boxH, r_);
+    ctx.stroke();
   }
 
   ctx.fillStyle = f.txtColor;
