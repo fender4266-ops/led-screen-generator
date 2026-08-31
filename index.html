@@ -657,7 +657,8 @@
       <label class="checkbox"><input type="checkbox" id="specChkParams" checked> 📐 Параметры экрана</label>
       <label class="checkbox"><input type="checkbox" id="specChkProc"   checked> 🖥️ Видеопроцессор</label>
       <label class="checkbox"><input type="checkbox" id="specChkPower"  checked> ⚡ Потребляемая мощность</label>
-      <label class="checkbox"><input type="checkbox" id="specChkWeight" checked> ⚖️ Вес и подвес</label>
+      <label class="checkbox"><input type="checkbox" id="specChkWeight" checked> ⚖️ Вес экрана</label>
+      <label class="checkbox"><input type="checkbox" id="specChkHoist"  checked> 🏗️ Подвес (лебёдки)</label>
     </div>
     <div class="row" style="margin-top:10px;">
       <button onclick="engSaveSpecsPNG()" style="background:#16a085;">📋 Сохранить характеристики PNG</button>
@@ -1595,8 +1596,8 @@ function drawLogo2(ctx, s, d) {
 ═══════════════════════════════════════════════════════════════════════════ */
 
 function drawComposition(ctx, comp, withOverlay) {
-  // Чёрный фон общей композиции
-  ctx.fillStyle = '#000';
+  // Фон композиции — темно-серый (чуть темнее #1e1e1e сайта)
+  ctx.fillStyle = '#161616';
   ctx.fillRect(0, 0, comp.w, comp.h);
 
   // Смещаем всё так, чтобы видимые экраны начинались с (0,0)
@@ -1634,7 +1635,7 @@ function drawComposition(ctx, comp, withOverlay) {
       ctx.save();
       ctx.translate(s.posX, s.posY);
       ctx.strokeStyle = 'rgba(120,120,120,0.6)';
-      ctx.lineWidth = Math.max(1, Math.round(d.cabPxW / 96));
+      ctx.lineWidth = Math.max(1, Math.round(d.cabPxW / 23));   // Линии сетки модулей чем меньше число тем толще 
       for (let y = 0; y < d.cabsY; y++) {
         for (let x = 0; x < d.cabsX; x++) {
           if (isCabOff(s, x, y)) continue;   // ✂️ вокруг дырок сетку не рисуем
@@ -1707,7 +1708,7 @@ function drawComposition(ctx, comp, withOverlay) {
       const active = withOverlay.activeHighlight && (idx === activeId);
       ctx.save();
       ctx.strokeStyle = active ? '#4ec9b0' : '#00a0ff';
-      ctx.lineWidth = active ? 4 : 2;
+      ctx.lineWidth = active ? 4 : 2;   // ← активный / остальные
       ctx.strokeRect(s.posX, s.posY, d.w, d.h);
       ctx.restore();
     });
@@ -1722,12 +1723,18 @@ function drawComposition(ctx, comp, withOverlay) {
 
       ctx.save();
       const lbl = `${s.name}  (${d.w}×${d.h})`;
-      ctx.font = 'bold 22px sans-serif';
+      ctx.font = 'bold 22px sans-serif';   // ← размер текста подписи
       ctx.textAlign = 'left';
       ctx.textBaseline = 'top';
       const tw = ctx.measureText(lbl).width;
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
       ctx.fillRect(s.posX + 4, s.posY + 4, tw + 12, 30);
+      // обводка текста
+      ctx.strokeStyle = 'rgba(0,0,0,0.9)';
+      ctx.lineWidth = 4;
+      ctx.lineJoin = 'round';
+      ctx.strokeText(lbl, s.posX + 10, s.posY + 8);
+      // заливка текста поверх обводки
       ctx.fillStyle = active ? '#4ec9b0' : '#00a0ff';
       ctx.fillText(lbl, s.posX + 10, s.posY + 8);
       ctx.restore();
@@ -1853,8 +1860,8 @@ function saveAllPNG() {
     tmp.height = d.h;
     const ctx = tmp.getContext('2d');
 
-    // фон
-    ctx.fillStyle = '#000';
+    // фон — темно-серый (дырки от вырезанных кабинетов будут этого цвета)
+    ctx.fillStyle = '#161616';
     ctx.fillRect(0, 0, d.w, d.h);
 
      // 🎬 ПОРЯДОК СЛОЁВ: фон → сетка → номера → ТЕКСТ сверху → рамка
@@ -1870,7 +1877,7 @@ function saveAllPNG() {
     // 2️⃣ Линии сетки (ПОД текстом) — ✂️ рисуем рамку только вокруг живых кабинетов
     if (pngOverlay && pngOverlay.lines) {
       ctx.strokeStyle = 'rgba(120,120,120,0.6)';
-      ctx.lineWidth = Math.max(1, Math.round(d.cabPxW / 96));
+      ctx.lineWidth = Math.max(1, Math.round(d.cabPxW / 96));   // ←Линии сетки модулей
       for (let y = 0; y < d.cabsY; y++) {
         for (let x = 0; x < d.cabsX; x++) {
           if (isCabOff(s, x, y)) continue;
@@ -2427,7 +2434,8 @@ function saveEngSession() {
       specParams: getEl('specChkParams') ? getEl('specChkParams').checked : true,
       specProc:   getEl('specChkProc')   ? getEl('specChkProc').checked   : true,
       specPower:  getEl('specChkPower')  ? getEl('specChkPower').checked  : true,
-      specWeight: getEl('specChkWeight') ? getEl('specChkWeight').checked : true
+      specWeight: getEl('specChkWeight') ? getEl('specChkWeight').checked : true,
+      specHoist:  getEl('specChkHoist')  ? getEl('specChkHoist').checked  : true
     };
     localStorage.setItem(ENG_SESSION_KEY, JSON.stringify(data));
   } catch (e) { console.warn('Не удалось сохранить инженерную сессию:', e); }
@@ -2463,6 +2471,7 @@ function loadEngSession() {
     setChk('specChkProc',   d.specProc);
     setChk('specChkPower',  d.specPower);
     setChk('specChkWeight', d.specWeight);
+    setChk('specChkHoist',  d.specHoist);
     return true;
   } catch (e) {
     console.warn('Не удалось загрузить инженерную сессию:', e);
@@ -3413,14 +3422,19 @@ function engSaveSpecsPNG() {
       ]
     },
     {
-      title: '⚖️ ВЕС И ПОДВЕС', color: '#f0a500', bg: '#2a2410', border: '#5a4a1a',
+      title: '⚖️ ВЕС ЭКРАНА', color: '#f0a500', bg: '#2a2410', border: '#5a4a1a',
       rows: [
-        ['📦 Кабинетов',                   `${d.totalCabs} шт × ${d.cabWkg} кг`, ''],
-        ['🏗️ Чистый вес',                 `${d.netKg.toFixed(1)} кг`, '(только кабинеты)'],
+        ['📦 Кабинетов',                    `${d.totalCabs} шт × ${d.cabWkg} кг`, ''],
+        ['🏗️ Чистый вес',                  `${d.netKg.toFixed(1)} кг`, '(только кабинеты)'],
         [`🔌 + Коммутация (${d.rigExtra}%)`, `${d.rigKg.toFixed(1)} кг`, '(вес в сборе)', '#4ec9b0'],
-        [`🛡️ + Запас (${d.reserve}%)`,     `${d.calcKg.toFixed(1)} кг`, '(расчётный для лебёдок)', '#f0a500'],
-        ['🏗️ Нужно лебёдок',              `${d.hoists} шт × ${d.hoistCap} кг`, '', '#ffd479'],
-        ['⚙️ Нагрузка на лебёдку',         `${d.perHoist.toFixed(1)} кг`, `(${d.hoistPct}% от лимита)`,
+        [`🛡️ + Запас (${d.reserve}%)`,      `${d.calcKg.toFixed(1)} кг`, '(расчётный для подвеса)', '#f0a500']
+      ]
+    },
+    {
+      title: '🏗️ ПОДВЕС (ЛЕБЁДКИ)', color: '#ffd479', bg: '#2a2410', border: '#5a4a1a',
+      rows: [
+        ['🏗️ Нужно лебёдок',       `${d.hoists} шт × ${d.hoistCap} кг`, '', '#ffd479'],
+        ['⚙️ Нагрузка на лебёдку', `${d.perHoist.toFixed(1)} кг`, `(${d.hoistPct}% от лимита)`,
           d.hoistPct > 90 ? '#ff6b6b' : d.hoistPct > 75 ? '#f0a500' : '#2ecc71']
       ]
     }
@@ -3432,7 +3446,8 @@ function engSaveSpecsPNG() {
     chk('specChkParams'),   // 0 — 📐 Параметры экрана
     chk('specChkProc'),     // 1 — 🖥️ Видеопроцессор
     chk('specChkPower'),    // 2 — ⚡ Потребляемая мощность
-    chk('specChkWeight')    // 3 — ⚖️ Вес и подвес
+    chk('specChkWeight'),   // 3 — ⚖️ Вес экрана
+    chk('specChkHoist')     // 4 — 🏗️ Подвес (лебёдки)
   ];
   const blocks = allBlocks.filter((b, i) => want[i]);
   if (blocks.length === 0) {
