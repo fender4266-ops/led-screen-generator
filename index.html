@@ -65,6 +65,11 @@
   .screen-tab.active { background:#4ec9b0; color:#111; font-weight:bold; }
   .screen-tab .del { color:#ff6b6b; font-weight:bold; padding:0 3px; }
   .screen-tab.active .del { color:#900; }
+  .screen-tab { cursor:grab; user-select:none; }
+  .screen-tab.dragging { opacity:0.4; }
+  .screen-tab.drop-before { box-shadow:-3px 0 0 #4ec9b0; }
+  .screen-tab.drop-after { box-shadow:3px 0 0 #4ec9b0; }
+  .screen-tab:focus-visible { outline:2px solid #fff; outline-offset:2px; }
   .tab-add { background:#007acc; color:#fff; padding:6px 12px; border-radius:5px; }
   .pos-panel { background:#20303a; border:1px solid #2a5060; }
   /* Сворачиваемые секции */
@@ -249,11 +254,21 @@
   <div class="row" style="margin-top:10px;">
     <span style="font-size:13px;">Авто-раскладка:</span>
     <div class="mode-btns">
-      <button onclick="autoLayout('row')">↔️ В ряд</button>
-      <button onclick="autoLayout('col')">↕️ В столбец</button>
+      <button title="Повторное нажатие меняет порядок: по вкладкам / обратный" onclick="autoLayout('row')">↔️ В ряд</button>
+      <button title="Повторное нажатие меняет порядок: по вкладкам / обратный" onclick="autoLayout('col')">↕️ В столбец</button>
     </div>
     <button onclick="alignSelf('originTL')">📍 Этот экран в (0,0)</button>
   </div>
+  <div class="row" style="margin-top:10px;">
+    <span style="font-size:13px;">Выровнять видимые экраны:</span>
+    <div class="mode-btns">
+      <button onclick="alignScreens('top')" title="Совместить верхние края с верхней границей композиции">↑ По верху (подвес)</button>
+      <button onclick="alignScreens('bottom')" title="Совместить нижние края с нижней границей композиции">↓ По низу (пол)</button>
+      <button onclick="alignScreens('left')" title="Совместить левые края с левой границей композиции">← По левому краю</button>
+      <button onclick="alignScreens('right')" title="Совместить правые края с правой границей композиции">→ По правому краю</button>
+    </div>
+  </div>
+  <div class="info" style="margin-top:6px;">По верху и низу сохраняется X, по левому и правому краю — Y. Для экранов на полу: «В ряд», затем «По низу».</div>
   <div class="info" id="compInfo" style="margin-top:10px;"></div>
 </div>
 
@@ -376,7 +391,7 @@
     <label class="checkbox"><input type="checkbox" id="txtRes"> Разрешение (px)</label>
     <label class="checkbox"><input type="checkbox" id="txtSize"> Физ. размер (м)</label>
     <label>Цвет текста<input type="color" id="txtColor" value="#ffff00"></label>
-    <label>Размер текста (% заполнения круга)<input type="number" id="txtSizePct" value="70" min="2" max="100"></label>
+    <label>Размер текста (% заполнения круга)<input type="number" id="txtSizePct" value="80" min="2" max="100"></label>
   </div>
   <div class="row" style="margin-top:10px;">
     <label class="checkbox"><input type="checkbox" id="txtBg" checked> Подложка</label>
@@ -697,7 +712,7 @@ function defaultScreen(name, x, y) {
       dirW:520, dirH:430, dirPhysW:0, dirPhysH:0, dirCell:120,    // размер клетки по умолчаниюю
       col1:'#ffffff', col2:'#000000', gradDir:'h', gradA:'#000000', gradB:'#ffffff',
       showCross:false, crossColor:'#ff0000', crossLW:4, circlePct:50,
-      txtName:true, txtRes:true, txtSize:false, txtColor:'#ffff00', txtSizePct:40,
+      txtName:true, txtRes:true, txtSize:false, txtColor:'#ffff00', txtSizePct:80,
       txtBg:true, txtBgColor:'#000000', txtBgAlpha:60,
            logo1on:true, logo1size:20, logo1alpha:100, logo1bg:false, logo1bgColor:'#000000', logo1bgAlpha:50, logo1gap:20, logo1manual:false, logo1moveText:false, logo1x:0, logo1y:0,
       logo2on:true, logo2corner:'br', logo2size:12, logo2alpha:100, logo2margin:20, logo2bg:false, logo2bgColor:'#000000', logo2bgAlpha:50
@@ -840,9 +855,9 @@ let activeId = 0;
 // 🔍 Зум превью: null = авто (вписать в 1000px), число = ручной множитель
 let previewZoom = null;
 
-// Направление авто-раскладки — меняется при каждом нажатии
-let layoutRowReversed = false;
-let layoutColReversed = false;
+// Первое нажатие применяет порядок вкладок, следующие чередуют направление.
+let layoutRowReversed = true;
+let layoutColReversed = true;
 
 // Кнопки зума: dir = +1 (приблизить), -1 (отдалить), 0 (сброс на авто)
 function zoomPreview(dir) {
@@ -1042,6 +1057,14 @@ function renderPresetButtons() {
 }
 
 // ─── Табы экранов ────────────────────────────────────────────────────────────
+let draggedScreen = null;
+
+function clearTabDropMarks() {
+  getEl('screenTabs').querySelectorAll('.screen-tab').forEach(tab => {
+    tab.classList.remove('drop-before', 'drop-after');
+  });
+}
+
 function renderTabs() {
   const box = getEl('screenTabs');
   box.innerHTML = '';
@@ -1049,6 +1072,56 @@ function renderTabs() {
     const tab = document.createElement('div');
     tab.className = 'screen-tab' + (i === activeId ? ' active' : '');
     tab.onclick = () => switchScreen(i);
+    tab.draggable = screens.length > 1;
+    tab.tabIndex = 0;
+    tab.title = 'Перетащите вкладку для изменения порядка. С клавиатуры: Alt + ←/→';
+    tab.onkeydown = (e) => {
+      if (e.altKey && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault();
+        const target = i + (e.key === 'ArrowLeft' ? -1 : 1);
+        moveScreen(i, target);
+        getEl('screenTabs').children[Math.max(0, Math.min(target, screens.length - 1))].focus();
+      } else if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        switchScreen(i);
+        getEl('screenTabs').children[i].focus();
+      }
+    };
+    tab.ondragstart = (e) => {
+      draggedScreen = s;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', s.name || 'Screen');
+      tab.classList.add('dragging');
+    };
+    tab.ondragover = (e) => {
+      if (!draggedScreen) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      clearTabDropMarks();
+      if (draggedScreen === s) return;
+      const rect = tab.getBoundingClientRect();
+      tab.classList.add(e.clientX < rect.left + rect.width / 2 ? 'drop-before' : 'drop-after');
+    };
+    tab.ondragleave = (e) => {
+      if (!tab.contains(e.relatedTarget)) tab.classList.remove('drop-before', 'drop-after');
+    };
+    tab.ondrop = (e) => {
+      if (!draggedScreen) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const from = screens.indexOf(draggedScreen);
+      const rect = tab.getBoundingClientRect();
+      const insertion = i + (e.clientX >= rect.left + rect.width / 2 ? 1 : 0);
+      draggedScreen = null;
+      clearTabDropMarks();
+      tab.classList.remove('dragging');
+      moveScreen(from, insertion > from ? insertion - 1 : insertion);
+    };
+    tab.ondragend = () => {
+      draggedScreen = null;
+      tab.classList.remove('dragging');
+      clearTabDropMarks();
+    };
 
     const eye = document.createElement('span');
     eye.textContent = s.visible ? '👁️' : '🚫';
@@ -1077,6 +1150,26 @@ function renderTabs() {
     }
     box.appendChild(tab);
   });
+}
+
+function moveScreen(i, target) {
+  if (!Number.isInteger(i) || !Number.isInteger(target) || i === target ||
+      i < 0 || i >= screens.length || target < 0 || target >= screens.length) return;
+  readFormToScreen();
+  const activeScreen = screens[activeId];
+  const [screen] = screens.splice(i, 1);
+  screens.splice(target, 0, screen);
+  activeId = screens.indexOf(activeScreen);
+  // После перестановки первое применение раскладки следует новому порядку вкладок.
+  layoutRowReversed = true;
+  layoutColReversed = true;
+  const rowButton = document.querySelector('button[onclick="autoLayout(\'row\')"]');
+  const colButton = document.querySelector('button[onclick="autoLayout(\'col\')"]');
+  if (rowButton) rowButton.textContent = '↔️ В ряд';
+  if (colButton) colButton.textContent = '↕️ В столбец';
+  renderTabs();
+  saveSession();
+  generate();
 }
 
 function switchScreen(i) {
@@ -1305,7 +1398,6 @@ function autoLayout(dir) {
 
   if (dir === 'row') {
     layoutRowReversed = !layoutRowReversed;
-    // [...screens] — создаём копию, чтобы .reverse() не сломал оригинальный массив
     const order = layoutRowReversed ? [...screens].reverse() : [...screens];
     let cursor = 0;
     order.forEach(s => {
@@ -1313,6 +1405,7 @@ function autoLayout(dir) {
       s.posX = cursor; s.posY = 0;
       cursor += d.w;
     });
+
     const btn = document.querySelector('button[onclick="autoLayout(\'row\')"]');
     if (btn) btn.innerHTML = layoutRowReversed ? '↩️ В ряд (обратный)' : '↔️ В ряд';
 
@@ -1329,6 +1422,28 @@ function autoLayout(dir) {
     if (btn) btn.innerHTML = layoutColReversed ? '↩️ В столбец (обратный)' : '↕️ В столбец';
   }
 
+  writeScreenToForm();
+  generate();
+}
+
+function alignScreens(edge) {
+  if (!['top', 'bottom', 'left', 'right'].includes(edge)) return;
+  readFormToScreen();
+  const items = screens.filter(s => s.visible).map(s => ({ s, d: getScreenSize(s) }));
+  if (items.length === 0) return;
+  // Сначала фиксируем границу всей композиции, затем перемещаем экраны.
+  const vertical = edge === 'top' || edge === 'bottom';
+  const near = edge === 'top' || edge === 'left';
+  const boundary = items.reduce((value, { s, d }) => {
+    const start = vertical ? s.posY : s.posX;
+    const end = start + (vertical ? d.h : d.w);
+    return near ? Math.min(value, start) : Math.max(value, end);
+  }, near ? Infinity : -Infinity);
+  items.forEach(({ s, d }) => {
+    const position = near ? boundary : boundary - (vertical ? d.h : d.w);
+    if (vertical) s.posY = position;
+    else s.posX = position;
+  });
   writeScreenToForm();
   generate();
 }
