@@ -23,7 +23,10 @@
   select { padding:5px; background:#1e1e1e; color:#ddd; border:1px solid #555; border-radius:4px; }
   .info { font-size:14px; line-height:1.6; }
   .info b { color:#4ec9b0; }
-  #preview { border:1px solid #444; max-width:100%; image-rendering:pixelated; margin-top:10px; background:#161616; cursor:grab; }
+  #preview { border:1px solid #444; max-width:100%; image-rendering:pixelated; margin-top:10px; background:#161616; cursor:grab; touch-action:none; }
+  /* ✏️ Ручная разводка: палец рисует линии, а не прокручивает страницу */
+  #engCanvas.manual { touch-action:none; cursor:crosshair; }
+  #engManualTools button.active { background:var(--accent, #4ec9b0); color:#102011; }
 
   /* 📌 Закреплённое превью сверху экрана */
   #previewWrap.pinned {
@@ -331,7 +334,7 @@ button[onclick="randomPreset()"]:hover, button[onclick="saveCurrentAsPreset()"]:
 <div class="panel">
   <h4>📏 Размеры экрана</h4>
   <div class="row">
-    <label>Название экрана<input type="text" id="screenName" value="Screen 1" oninput="saveField('screenName',this.value);generate()"></label>
+    <label>Название экрана<input type="text" id="screenName" value="Screen 1" oninput="saveField('screenName',this.value)"></label>
   </div>
   <div class="row" style="margin-top:12px;">
     <span style="font-size:13px;">Способ ввода:</span>
@@ -385,8 +388,8 @@ button[onclick="randomPreset()"]:hover, button[onclick="saveCurrentAsPreset()"]:
 <div class="panel pos-panel">
   <h4>📐 Позиция экрана в общей композиции</h4>
   <div class="row">
-    <label>X (px)<input type="number" id="posX" value="0" onchange="saveField('posX',this.value);generate()"></label>
-    <label>Y (px)<input type="number" id="posY" value="0" onchange="saveField('posY',this.value);generate()"></label>
+    <label>X (px)<input type="number" id="posX" value="0" oninput="saveField('posX',this.value)"></label>
+    <label>Y (px)<input type="number" id="posY" value="0" oninput="saveField('posY',this.value)"></label>
   </div>
   <div class="row" style="margin-top:10px;">
     <span style="font-size:13px;">Авто-раскладка:</span>
@@ -768,6 +771,33 @@ button[onclick="randomPreset()"]:hover, button[onclick="saveCurrentAsPreset()"]:
     </div>
     <div class="row" style="margin-top:10px;">
       <button onclick="engSaveSpecsPNG()" style="background:#16a085;">📋 Сохранить характеристики PNG</button>
+    </div>
+    <!-- ✏️ РУЧНАЯ РАЗВОДКА -->
+    <div class="row" style="margin-top:14px; padding-top:14px; border-top:1px solid #444;">
+      <label class="checkbox">
+        <input type="checkbox" id="engManualMode" onchange="engToggleManual()">
+        ✏️ Ручная разводка — рисовать линии самому
+      </label>
+    </div>
+    <div id="engManualTools" style="display:none; margin-top:10px;">
+      <div class="row">
+        <div class="mode-btns">
+          <button id="engToolDraw"  class="active" onclick="engSetManualTool('draw')"  title="Рисовать линию">✏️ Рисовать</button>
+          <button id="engToolErase" onclick="engSetManualTool('erase')" title="Убирать кабинеты из линий">🧽 Ластик</button>
+        </div>
+        <button onclick="engManualNewLine()" title="Следующая линия = следующий порт">➕ Новая линия</button>
+        <button onclick="engManualUndo()" title="Отменить последнее действие (Ctrl+Z)">↩️ Отменить</button>
+        <button onclick="engManualDeleteLine()">🗑️ Удалить линию</button>
+        <button onclick="engManualFromAuto()" title="Скопировать авто-разводку и поправить её руками">🤖 Взять из авто</button>
+        <button onclick="engManualClearAll()">🧹 Очистить всё</button>
+      </div>
+      <div class="info" id="engManualStatus" style="margin-top:8px;"></div>
+      <div class="info" id="engManualMsg" style="margin-top:4px; color:#f0a500;"></div>
+      <div class="info" style="margin-top:6px;">
+        Ведите мышкой или пальцем по кабинетам на карте — они добавляются в линию по порядку.
+        Нажмите на последний кабинет линии, чтобы продолжить её, или на любой другой — чтобы выбрать линию.
+        Шаг назад по линии стирает последний кабинет. Направление разводки и зоны в ручном режиме не используются.
+      </div>
     </div>
     <canvas id="engCanvas" style="border:1px solid #444; max-width:100%; margin-top:12px; background:#111;"></canvas>
   </div>
@@ -2170,9 +2200,10 @@ function saveAllPNG() {
    Живое обновление формы + перетаскивание экранов мышью по превью
 ═══════════════════════════════════════════════════════════════════════════ */
 
+// Событие 'input' срабатывает у всех полей (текст, числа, цвета, галочки, списки),
+// поэтому отдельный 'change' не нужен — иначе перерисовка шла дважды.
 document.querySelectorAll('#page-visual input, #page-visual select').forEach(el => {
   el.addEventListener('input', () => { readFormToScreen(); generate(); });
-  el.addEventListener('change', () => { readFormToScreen(); generate(); });
 });
 
 // Перетаскивание экрана мышью на превью
@@ -2213,7 +2244,8 @@ document.querySelectorAll('#page-visual input, #page-visual select').forEach(el 
 
   let painting = false, paintTo = true;   // ✂️ режим "рисования" вырезов
 
-  canvas.addEventListener('mousedown', (e) => {
+  canvas.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0) return;          // только левая кнопка / касание
     const p = toComp(e);
 
     // ✂️ РЕЖИМ CUSTOM — вырезаем/возвращаем кабинеты вместо перетаскивания
@@ -2250,7 +2282,7 @@ document.querySelectorAll('#page-visual input, #page-visual select').forEach(el 
     canvas.style.cursor = 'grabbing';
   });
 
-  window.addEventListener('mousemove', (e) => {
+  window.addEventListener('pointermove', (e) => {
     // ✂️ Протягивание — вырезаем целую полосу кабинетов
     if (painting) {
       const hit = cabAtPoint(toComp(e).x, toComp(e).y);
@@ -2273,7 +2305,7 @@ document.querySelectorAll('#page-visual input, #page-visual select').forEach(el 
       ny = Math.round(ny / 10) * 10;
     }
 
-    // Магнитное прилипание к краям соседних экранов (в пределах 12px)
+    // Магнитное прилипание к краям соседних экранов (в пределах SNAP = 40px)
     const SNAP = 40;
     const cur = screens[dragIdx];
     const dCur = getScreenSize(cur);
@@ -2306,7 +2338,7 @@ document.querySelectorAll('#page-visual input, #page-visual select').forEach(el 
     renderPreview();   // только перерисовка, без saveSession на каждый пиксель
   });
 
-  window.addEventListener('mouseup', () => {
+  const stopDrag = () => {
     if (painting) { painting = false; generate(); return; }
     if (dragging) {
       dragging = false;
@@ -2314,10 +2346,12 @@ document.querySelectorAll('#page-visual input, #page-visual select').forEach(el 
       canvas.style.cursor = 'grab';
       generate();
     }
-  });
+  };
+  window.addEventListener('pointerup', stopDrag);
+  window.addEventListener('pointercancel', stopDrag);
 
   // Курсор-подсказка при наведении
-  canvas.addEventListener('mousemove', (e) => {
+  canvas.addEventListener('pointermove', (e) => {
     if (dragging || painting) return;
     if (cabEditMode) { canvas.style.cursor = 'crosshair'; return; }
     const p = toComp(e);
@@ -2667,6 +2701,12 @@ function saveEngSession() {
             startEdge: getEl('engStartEdge') ? getEl('engStartEdge').value : 'top',
       rectMode: getEl('engRectMode') ? getEl('engRectMode').checked : false,
       hoistCap: getEl('engHoistCap') ? getEl('engHoistCap').value : '250',
+      hoistReserve: getEl('engHoistReserve').value,   // ⚖️ запас прочности
+      rigExtra:     getEl('engRigExtra').value,       // ⚖️ вес коммутации
+      cabWeight:    getEl('engCabWeight').value,      // ⚖️ вес кабинета
+      autoWeight:   getEl('engAutoWeight').checked,
+      manualMode:   engManualOn(),                    // ✏️ ручная разводка
+      manualLines:  engManualLines,
       mapSpecs: getEl('engMapSpecs') ? getEl('engMapSpecs').checked : true,
       procSelect: engProcChoice,
       disabled: engDisabled,          // ✂️ форма экрана
@@ -2701,6 +2741,15 @@ function loadEngSession() {
     if (d.startEdge && getEl('engStartEdge')) getEl('engStartEdge').value = d.startEdge;
     if (d.rectMode !== undefined && getEl('engRectMode')) getEl('engRectMode').checked = d.rectMode;
     if (d.hoistCap && getEl('engHoistCap')) getEl('engHoistCap').value = d.hoistCap;
+    if (d.hoistReserve !== undefined) getEl('engHoistReserve').value = d.hoistReserve;
+    if (d.rigExtra !== undefined)     getEl('engRigExtra').value = d.rigExtra;
+    if (d.autoWeight !== undefined)   getEl('engAutoWeight').checked = d.autoWeight;
+    if (d.cabWeight !== undefined)    getEl('engCabWeight').value = d.cabWeight;
+    if (d.manualMode !== undefined)   getEl('engManualMode').checked = d.manualMode;
+    if (Array.isArray(d.manualLines)) {
+      engManualLines = d.manualLines;
+      engManualCur = engManualLines.length - 1;
+    }
     if (d.mapSpecs !== undefined && getEl('engMapSpecs')) getEl('engMapSpecs').checked = d.mapSpecs;
     if (d.procSelect) engProcChoice = d.procSelect;
     engDisabled = Object.assign({}, d.disabled || {});   // ✂️ восстанавливаем форму
@@ -2778,7 +2827,7 @@ function engCalc() {
   if (totalCabs < 1) { getEl('engResult').innerHTML = '⚠️ Все кабинеты вырезаны.'; return; }
 
   const dir = parseInt(getEl('engDir').value);
-  const snake = buildSnake(cx, cy, cab.perLine, dir);   // ← вот этой строки не хватало!
+  const snake = engGetLines(cx, cy, cab, dir);   // авто-змейка или ✏️ ручные линии
   const lines = snake.lines;
   const numLines = lines.length;
 
@@ -2830,7 +2879,18 @@ function engCalc() {
   const rectModeOn = getEl('engRectMode') && getEl('engRectMode').checked;
   const rectRow = getEl('rectInfoRow');
 
-    if (rectModeOn && snake.tiling) {
+  if (snake.manual) {
+    // ✏️ Ручная разводка — сводка по нарисованным линиям
+    if (rectRow) rectRow.style.display = 'none';
+    const connected = lines.reduce((n, l) => n + l.length, 0);
+    const free = totalCabs - connected;
+    const over = lines.filter(l => l.length > cab.perLine).length;
+    html += `✏️ Ручная разводка: линий <b>${numLines}</b>, самая длинная — <b>${snake.effPerLine}</b> каб (лимит ${cab.perLine})<br>`;
+    if (over > 0) html += `<span style="color:#ff6b6b;">⚠️ Линий длиннее лимита: <b>${over}</b> — разделите их</span><br>`;
+    html += free > 0
+      ? `<span style="color:#ff6b6b;">⚠️ Не подключено кабинетов: <b>${free}</b></span><br>`
+      : `✅ Все кабинеты подключены<br>`;
+  } else if (rectModeOn && snake.tiling) {
     const t = snake.tiling;
     // формируем строку "какие зоны и сколько"
     const parts = Object.entries(t.sizes)
@@ -2886,7 +2946,7 @@ function engCalc() {
   }
 
   // ─── 📋 Карточка характеристик процессора ───────────────────────────────
-  html += buildProcSpecCard(chosen, totalPx);
+  html += buildProcSpecCard(chosen, totalPx, needCount);
 
   // ─── ⚡ Карточка потребляемой мощности ───────────────────────────────────
   html += buildPowerCard(totalCabs, cab, cx, cy);
@@ -2911,15 +2971,17 @@ function engCalc() {
     ofLine: procOfLine
   });
   engUpdateShapeInfo(cx, cy);   // ✂️ подпись о форме
+  engManualUpdateStatus(cab);   // ✏️ подпись «текущая линия»
   saveEngSession();   // 💾 автосохранение инженерных настроек
 }
 
 
 // ─── 📋 Карточка технических характеристик процессора ───────────────────────
-function buildProcSpecCard(p, totalPx) {
+function buildProcSpecCard(p, totalPx, needCount = 1) {
   const yes = '<span style="color:#2ecc71;">✅ Да</span>';
   const no  = '<span style="color:#ff6b6b;">❌ Нет</span>';
-  const loadPct = Math.round(totalPx / p.maxPx * 100);
+  // Загрузка с учётом количества процессоров (как в PNG-спецификации)
+  const loadPct = Math.round(totalPx / (p.maxPx * needCount) * 100);
   const loadColor = loadPct > 90 ? '#ff6b6b' : loadPct > 70 ? '#f0a500' : '#2ecc71';
 
   let c = `<div style="margin-top:14px; background:#20303a; border:1px solid #2a5060; border-radius:8px; padding:14px;">`;
@@ -3159,13 +3221,28 @@ function buildRectSnake(cx, cy, perLine) {
   const lines = [];
   let maxArea = 0, maxW = 1, maxH = 1;
 
+  const edge = engGetStartEdge();   // 🔝 край старта (или null)
+
   tiling.zones.forEach(z => {
     const line = [];
-    for (let col = 0; col < z.zw; col++) {
-      const goingDown = (col % 2 === 0);
-      for (let r = 0; r < z.zh; r++) {
-        const row = goingDown ? r : z.zh - 1 - r;
-        line.push({ x: z.x0 + col, y: z.y0 + row });
+    if (edge === 'left' || edge === 'right') {
+      // Змейка по строкам: каждая зона начинается с левого/правого края
+      for (let row = 0; row < z.zh; row++) {
+        const goingRight = (edge === 'left') ? (row % 2 === 0) : (row % 2 === 1);
+        for (let c = 0; c < z.zw; c++) {
+          const col = goingRight ? c : z.zw - 1 - c;
+          line.push({ x: z.x0 + col, y: z.y0 + row });
+        }
+      }
+    } else {
+      // Змейка по колоннам: старт сверху (по умолчанию) или снизу
+      const fromBottom = (edge === 'bottom');
+      for (let col = 0; col < z.zw; col++) {
+        const goingDown = fromBottom ? (col % 2 === 1) : (col % 2 === 0);
+        for (let r = 0; r < z.zh; r++) {
+          const row = goingDown ? r : z.zh - 1 - r;
+          line.push({ x: z.x0 + col, y: z.y0 + row });
+        }
       }
     }
     lines.push(line);
@@ -3177,6 +3254,16 @@ function buildRectSnake(cx, cy, perLine) {
 }
 
 
+// ─── 🔝 Край старта портов ──────────────────────────────────────────────────
+// null — галочка выключена: одна непрерывная змейка, которая просто режется
+//        на линии (следующая линия продолжает с того места, где кончилась прошлая).
+// 'top' | 'bottom' | 'left' | 'right' — каждая линия начинается с этого края.
+function engGetStartEdge() {
+  const chk = getEl('engPortsSameStart');
+  const sel = getEl('engStartEdge');
+  return (chk && chk.checked && sel) ? sel.value : null;
+}
+
 // ─── 🐍 ОБЫЧНАЯ ЗМЕЙКА (по направлению разводки) ────────────────────────────
 function buildSnake(cx, cy, perLine, dir) {
   // ═══ РЕЖИМ ПРЯМОУГОЛЬНЫХ ЗОН (приоритет) ═══
@@ -3187,114 +3274,360 @@ function buildSnake(cx, cy, perLine, dir) {
   }
 
   const vertical = (dir === 1 || dir === 3 || dir === 5 || dir === 7);
-  const lines = [];
 
-   if (vertical) {
-    // Разводка колоннами (вертикальная змейка) — ✂️ с учётом вырезанных
-    const leftToRight = (dir === 1 || dir === 5);
-    const downFirst   = (dir === 1 || dir === 3);
+  // 🔝 Галочка «каждый порт заходит с одного края»
+  const edge = engGetStartEdge();
+  const sameStart = (edge !== null);
 
-    // порядок обхода колонн
-    const cols = [];
-    for (let i = 0; i < cx; i++) cols.push(leftToRight ? i : cx - 1 - i);
-
-    // Собираем ЖИВЫЕ ячейки каждой колонны (сверху вниз), пустые колонны выкидываем
-    const colCells = cols.map(col => {
-      const cells = [];
-      for (let r = 0; r < cy; r++) if (!engIsOff(col, r)) cells.push({ x: col, y: r });
-      return cells;
-    }).filter(c => c.length > 0);
-
-    let current = [], flip = 0, colsInCurrent = 0;
-    let maxCols = 0, maxUnit = 0;
-
-    colCells.forEach(cells => {
-      maxUnit = Math.max(maxUnit, cells.length);
-
-      // Колонна длиннее лимита — рвём её вынужденно
-      if (cells.length > perLine) {
-        if (current.length) { lines.push(current); current = []; flip = 0; colsInCurrent = 0; }
-        const ordered = downFirst ? cells : [...cells].reverse();
-        let seg = [];
-        ordered.forEach(c => {
-          seg.push(c);
-          if (seg.length >= perLine) { lines.push(seg); seg = []; }
-        });
-        if (seg.length) lines.push(seg);
-        return;
-      }
-
-      // Не влезает в текущую линию — закрываем её
-      if (current.length + cells.length > perLine) {
-        lines.push(current);
-        maxCols = Math.max(maxCols, colsInCurrent);
-        current = []; flip = 0; colsInCurrent = 0;
-      }
-
-      const goingDown = downFirst ? (flip % 2 === 0) : (flip % 2 === 1);
-      current.push(...(goingDown ? cells : [...cells].reverse()));
-      flip++; colsInCurrent++;
-    });
-    if (current.length) { lines.push(current); maxCols = Math.max(maxCols, colsInCurrent); }
-
-    const effPerLine  = lines.reduce((m, l) => Math.max(m, l.length), 0);
-    const unitLen     = maxUnit;
-    const unitsPerLine = (maxUnit <= perLine) ? maxCols : 0;
-
-    return { lines, effPerLine, unitLen, unitsPerLine };
-
+  // «Полосы» — колонны (вертикальная змейка) или строки (горизонтальная)
+  let stripForward;   // порядок обхода полос: слева→направо / сверху→вниз
+  let cellForward;    // направление первой полосы: вниз / вправо
+  if (vertical) {
+    stripForward = (dir === 1 || dir === 5);   // колонны слева направо
+    cellForward  = (dir === 1 || dir === 3);   // первая колонна идёт вниз
+    if (edge === 'top')    cellForward = true;
+    if (edge === 'bottom') cellForward = false;
+    if (edge === 'left')   stripForward = true;
+    if (edge === 'right')  stripForward = false;
   } else {
-    // Разводка строками (горизонтальная змейка) — ✂️ с учётом вырезанных
-    const topToBottom      = (dir === 2 || dir === 4);
-    const leftToRightStart = (dir === 2 || dir === 6);
-
-    const rows = [];
-    for (let i = 0; i < cy; i++) rows.push(topToBottom ? i : cy - 1 - i);
-
-    // Живые ячейки каждой строки (слева направо)
-    const rowCells = rows.map(row => {
-      const cells = [];
-      for (let c = 0; c < cx; c++) if (!engIsOff(c, row)) cells.push({ x: c, y: row });
-      return cells;
-    }).filter(c => c.length > 0);
-
-    let current = [], flip = 0, rowsInCurrent = 0;
-    let maxRows = 0, maxUnit = 0;
-
-    rowCells.forEach(cells => {
-      maxUnit = Math.max(maxUnit, cells.length);
-
-      if (cells.length > perLine) {
-        if (current.length) { lines.push(current); current = []; flip = 0; rowsInCurrent = 0; }
-        const ordered = leftToRightStart ? cells : [...cells].reverse();
-        let seg = [];
-        ordered.forEach(c => {
-          seg.push(c);
-          if (seg.length >= perLine) { lines.push(seg); seg = []; }
-        });
-        if (seg.length) lines.push(seg);
-        return;
-      }
-
-      if (current.length + cells.length > perLine) {
-        lines.push(current);
-        maxRows = Math.max(maxRows, rowsInCurrent);
-        current = []; flip = 0; rowsInCurrent = 0;
-      }
-
-      const goingRight = leftToRightStart ? (flip % 2 === 0) : (flip % 2 === 1);
-      current.push(...(goingRight ? cells : [...cells].reverse()));
-      flip++; rowsInCurrent++;
-    });
-    if (current.length) { lines.push(current); maxRows = Math.max(maxRows, rowsInCurrent); }
-
-    const effPerLine  = lines.reduce((m, l) => Math.max(m, l.length), 0);
-    const unitLen     = maxUnit;
-    const unitsPerLine = (maxUnit <= perLine) ? maxRows : 0;
-
-    return { lines, effPerLine, unitLen, unitsPerLine };
+    stripForward = (dir === 2 || dir === 4);   // строки сверху вниз
+    cellForward  = (dir === 2 || dir === 6);   // первая строка идёт вправо
+    if (edge === 'left')   cellForward = true;
+    if (edge === 'right')  cellForward = false;
+    if (edge === 'top')    stripForward = true;
+    if (edge === 'bottom') stripForward = false;
   }
+
+  const nStrips = vertical ? cx : cy;
+  const nCells  = vertical ? cy : cx;
+
+  // Собираем ЖИВЫЕ ячейки каждой полосы (✂️ без вырезанных), пустые выкидываем
+  const strips = [];
+  for (let i = 0; i < nStrips; i++) {
+    const s = stripForward ? i : nStrips - 1 - i;
+    const cells = [];
+    for (let k = 0; k < nCells; k++) {
+      const x = vertical ? s : k, y = vertical ? k : s;
+      if (!engIsOff(x, y)) cells.push({ x, y });
+    }
+    if (cells.length) strips.push(cells);
+  }
+
+  const lines = [];
+  // flip — сколько полос уже пройдено змейкой. Если sameStart — обнуляется
+  // на каждой новой линии (все линии стартуют с одного края), иначе змейка
+  // продолжается непрерывно через границу линий.
+  let current = [], flip = 0, stripsInCurrent = 0;
+  let maxStrips = 0, maxUnit = 0;
+
+  const closeLine = () => {
+    if (current.length) {
+      lines.push(current);
+      maxStrips = Math.max(maxStrips, stripsInCurrent);
+    }
+    current = []; stripsInCurrent = 0;
+    if (sameStart) flip = 0;
+  };
+  const forward = () => cellForward ? (flip % 2 === 0) : (flip % 2 === 1);
+
+  strips.forEach(cells => {
+    maxUnit = Math.max(maxUnit, cells.length);
+
+    // Полоса длиннее лимита — рвём её вынужденно
+    if (cells.length > perLine) {
+      closeLine();
+      const ordered = forward() ? cells : [...cells].reverse();
+      for (let i = 0; i < ordered.length; i += perLine) {
+        lines.push(ordered.slice(i, i + perLine));
+      }
+      flip++;
+      if (sameStart) flip = 0;
+      return;
+    }
+
+    // Не влезает в текущую линию — закрываем её
+    if (current.length + cells.length > perLine) closeLine();
+
+    current.push(...(forward() ? cells : [...cells].reverse()));
+    flip++; stripsInCurrent++;
+  });
+  closeLine();
+
+  const effPerLine   = lines.reduce((m, l) => Math.max(m, l.length), 0);
+  const unitLen      = maxUnit;
+  const unitsPerLine = (maxUnit <= perLine) ? maxStrips : 0;
+
+  return { lines, effPerLine, unitLen, unitsPerLine };
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   ✏️ РУЧНАЯ РАЗВОДКА — линии (порты) рисуются мышкой или пальцем по карте
+═══════════════════════════════════════════════════════════════════════════ */
+let engManualLines   = [];      // [[{x,y}, ...], ...] — линия = один порт, по порядку
+let engManualCur     = -1;      // индекс линии, которую сейчас рисуем
+let engManualTool    = 'draw';  // 'draw' — рисовать, 'erase' — ластик
+let engManualHistory = [];      // снимки для «Отменить»
+let engMapGeom       = null;    // где на карте лежит сетка (ставит engDrawMap)
+let engMapExporting  = false;   // при сохранении PNG подсветку не рисуем
+
+function engManualOn() {
+  const el = getEl('engManualMode');
+  return !!(el && el.checked);
+}
+
+// Линии для расчёта: ручные (если включено) или авто-змейка
+function engGetLines(cx, cy, cab, dir) {
+  if (!engManualOn()) return buildSnake(cx, cy, cab.perLine, dir);
+  engManualClean(cx, cy);
+  const lines = engManualLines.filter(l => l.length > 0);
+  const effPerLine = lines.reduce((m, l) => Math.max(m, l.length), 0);
+  return { lines, effPerLine, unitLen: 0, unitsPerLine: 0, manual: true };
+}
+
+// Выкидываем кабинеты, которых больше нет (экран уменьшили или вырезали),
+// и пустые линии (кроме текущей — в неё сейчас будут рисовать)
+function engManualClean(cx, cy) {
+  const curLine = engManualLines[engManualCur];
+  engManualLines.forEach(l => {
+    for (let i = l.length - 1; i >= 0; i--) {
+      const c = l[i];
+      if (c.x >= cx || c.y >= cy || engIsOff(c.x, c.y)) l.splice(i, 1);
+    }
+  });
+  engManualLines = engManualLines.filter(l => l.length > 0 || l === curLine);
+  engManualCur = curLine ? engManualLines.indexOf(curLine) : -1;
+}
+
+// Включить / выключить ручной режим
+function engToggleManual() {
+  const on = engManualOn();
+  const tools = getEl('engManualTools');
+  if (tools) tools.style.display = on ? 'block' : 'none';
+  const canvas = getEl('engCanvas');
+  if (canvas) canvas.classList.toggle('manual', on);
+  engManualMsg('');
+  engCalc();
+}
+
+function engSetManualTool(tool) {
+  engManualTool = tool;
+  getEl('engToolDraw').classList.toggle('active', tool === 'draw');
+  getEl('engToolErase').classList.toggle('active', tool === 'erase');
+}
+
+// Короткое сообщение-подсказка под кнопками
+let engManualMsgTimer = null;
+function engManualMsg(text) {
+  const el = getEl('engManualMsg');
+  if (!el) return;
+  el.textContent = text;
+  clearTimeout(engManualMsgTimer);
+  if (text) engManualMsgTimer = setTimeout(() => { el.textContent = ''; }, 4000);
+}
+
+// Строка состояния: какая линия выбрана и сколько в ней кабинетов
+function engManualUpdateStatus(cab) {
+  const el = getEl('engManualStatus');
+  if (!el) return;
+  if (!engManualOn()) { el.innerHTML = ''; return; }
+  const cur = engManualLines[engManualCur];
+  if (!cur) {
+    el.innerHTML = 'Линий пока нет — просто начните вести по кабинетам на карте.';
+    return;
+  }
+  // Номер порта = место среди непустых линий
+  const nonEmpty = engManualLines.filter(l => l.length > 0);
+  const portN = cur.length ? nonEmpty.indexOf(cur) + 1 : nonEmpty.length + 1;
+  const full = cur.length >= cab.perLine;
+  el.innerHTML = `Текущая линия: <b>P${portN}</b> — <b style="color:${full ? '#ff6b6b' : 'inherit'}">${cur.length} / ${cab.perLine}</b> каб` +
+    (cur.length === 0 ? ' (пустая, начните рисовать)' : '');
+}
+
+// ── История для «Отменить» ──
+function engManualPushHistory() {
+  engManualHistory.push(JSON.stringify({ lines: engManualLines, cur: engManualCur }));
+  if (engManualHistory.length > 100) engManualHistory.shift();
+}
+function engManualUndo() {
+  const snap = engManualHistory.pop();
+  if (!snap) { engManualMsg('Отменять больше нечего.'); return; }
+  const d = JSON.parse(snap);
+  engManualLines = d.lines;
+  engManualCur = d.cur;
+  engCalc();
+}
+
+// ── Кнопки ──
+function engManualNewLine() {
+  const cur = engManualLines[engManualCur];
+  if (cur && cur.length === 0) { engManualMsg('Новая линия уже начата — ведите по кабинетам.'); return; }
+  engManualPushHistory();
+  engManualLines.push([]);
+  engManualCur = engManualLines.length - 1;
+  engSetManualTool('draw');
+  engCalc();
+}
+
+function engManualDeleteLine() {
+  if (!engManualLines[engManualCur]) { engManualMsg('Сначала выберите линию — нажмите на неё на карте.'); return; }
+  engManualPushHistory();
+  engManualLines.splice(engManualCur, 1);
+  engManualCur = engManualLines.length - 1;
+  engCalc();
+}
+
+function engManualClearAll() {
+  if (!engManualLines.length) return;
+  if (!confirm('Удалить все нарисованные линии?')) return;
+  engManualPushHistory();
+  engManualLines = [];
+  engManualCur = -1;
+  engCalc();
+}
+
+// Скопировать авто-разводку как стартовую точку для правки
+function engManualFromAuto() {
+  const cab = CAB_TYPES[engCabType];
+  const cx = parseInt(getEl('engCX').value) || 0;
+  const cy = parseInt(getEl('engCY').value) || 0;
+  if (cx < 1 || cy < 1) return;
+  if (engManualLines.some(l => l.length) &&
+      !confirm('Заменить нарисованные линии авто-разводкой?')) return;
+  engManualPushHistory();
+  const auto = buildSnake(cx, cy, cab.perLine, parseInt(getEl('engDir').value));
+  engManualLines = auto.lines.map(l => l.map(c => ({ x: c.x, y: c.y })));
+  engManualCur = engManualLines.length - 1;
+  engCalc();
+}
+
+// ── Логика рисования ──
+
+// В какой линии и на каком месте стоит кабинет
+function engManualFind(c) {
+  for (let li = 0; li < engManualLines.length; li++) {
+    const si = engManualLines[li].findIndex(p => p.x === c.x && p.y === c.y);
+    if (si !== -1) return { li, si };
+  }
+  return null;
+}
+
+// Убрать кабинет из его линии (ластик)
+function engManualErase(c) {
+  const hit = engManualFind(c);
+  if (!hit) return false;
+  engManualLines[hit.li].splice(hit.si, 1);
+  engManualCur = hit.li;
+  return true;
+}
+
+// Добавить один кабинет в конец текущей линии (с проверкой лимита)
+function engManualAppend(c) {
+  const line = engManualLines[engManualCur];
+  const perLine = CAB_TYPES[engCabType].perLine;
+  if (line.length >= perLine) {
+    engManualMsg(`Линия заполнена (${perLine} каб — лимит для ${engCabType}). Нажмите «➕ Новая линия».`);
+    return false;
+  }
+  line.push({ x: c.x, y: c.y });
+  return true;
+}
+
+// Нажали на кабинет. Возвращает true, если дальше можно «вести» линию.
+function engManualStart(c) {
+  if (engManualTool === 'erase') { engManualErase(c); return true; }
+
+  const hit = engManualFind(c);
+  if (hit) {
+    // Кабинет уже в линии — выбираем её. С последнего кабинета можно продолжить.
+    engManualCur = hit.li;
+    return hit.si === engManualLines[hit.li].length - 1;
+  }
+
+  // Свободный кабинет — добавляем в текущую линию (или начинаем новую)
+  const perLine = CAB_TYPES[engCabType].perLine;
+  let line = engManualLines[engManualCur];
+  if (!line || line.length >= perLine) {
+    if (line) engManualMsg('Предыдущая линия заполнена — начата новая.');
+    engManualLines.push([]);
+    engManualCur = engManualLines.length - 1;
+  }
+  return engManualAppend(c);
+}
+
+// Палец/мышь переехали на кабинет c во время рисования
+function engManualContinue(c) {
+  if (engManualTool === 'erase') return engManualErase(c);
+
+  const line = engManualLines[engManualCur];
+  if (!line || !line.length) return false;
+  const last = line[line.length - 1];
+  if (last.x === c.x && last.y === c.y) return false;
+
+  // Шаг назад на предыдущий кабинет — стираем последний
+  const prev = line[line.length - 2];
+  if (prev && prev.x === c.x && prev.y === c.y) { line.pop(); return true; }
+
+  // Если мышь «перепрыгнула» несколько клеток — проходим их по очереди
+  let changed = false;
+  let x = last.x, y = last.y;
+  while (x !== c.x || y !== c.y) {
+    const dx = c.x - x, dy = c.y - y;
+    if (Math.abs(dx) >= Math.abs(dy)) x += Math.sign(dx); else y += Math.sign(dy);
+    if (engIsOff(x, y) || engManualFind({ x, y })) break;   // дырка или чужая линия — стоп
+    if (!engManualAppend({ x, y })) break;                  // лимит линии — стоп
+    changed = true;
+  }
+  return changed;
+}
+
+// Мышь / палец на карте расключения
+(function enableManualDraw() {
+  const canvas = getEl('engCanvas');
+  let drawing = false;
+
+  function cellAt(e) {
+    if (!engMapGeom) return null;
+    const rect = canvas.getBoundingClientRect();
+    const k = canvas.width / rect.width;   // карта на экране может быть уменьшена
+    const px = (e.clientX - rect.left) * k;
+    const py = (e.clientY - rect.top) * k;
+    const x = Math.floor((px - engMapGeom.ox) / engMapGeom.cellSize);
+    const y = Math.floor((py - engMapGeom.oy) / engMapGeom.cellSize);
+    if (x < 0 || y < 0 || x >= engMapGeom.cx || y >= engMapGeom.cy || engIsOff(x, y)) return null;
+    return { x, y };
+  }
+
+  canvas.addEventListener('pointerdown', (e) => {
+    if (!engManualOn() || e.button !== 0) return;
+    const c = cellAt(e);
+    if (!c) return;
+    e.preventDefault();
+    engManualPushHistory();
+    drawing = engManualStart(c);
+    if (drawing) canvas.setPointerCapture(e.pointerId);
+    engCalc();
+  });
+
+  canvas.addEventListener('pointermove', (e) => {
+    if (!drawing) return;
+    const c = cellAt(e);
+    if (c && engManualContinue(c)) engCalc();
+  });
+
+  const stop = () => { drawing = false; };
+  canvas.addEventListener('pointerup', stop);
+  canvas.addEventListener('pointercancel', stop);
+
+  // Ctrl+Z / Cmd+Z — отменить (когда открыта инженерка и включён ручной режим)
+  document.addEventListener('keydown', (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z' || e.shiftKey) return;
+    if (!engManualOn() || !getEl('page-engineer').classList.contains('active')) return;
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+    e.preventDefault();
+    engManualUndo();
+  });
+})();
 
 // ─── Цвета для портов ────────────────────────────────────────────────────────
 const PORT_COLORS = ['#e74c3c','#e67e22','#f1c40f','#2ecc71','#1abc9c',
@@ -3429,6 +3762,19 @@ function engDrawMap(cx, cy, cab, lines, resW, resH, extra, procMap) {
     ctx.fillText(lineLabel, sx, sy);
   });
 
+  // Запоминаем, где лежит сетка — нужно, чтобы понять, по какому кабинету кликнули
+  engMapGeom = { ox, oy, cellSize, cx, cy };
+
+  // ✏️ Ручной режим: обводим линию, которую сейчас рисуем (в PNG не попадает)
+  if (engManualOn() && !engMapExporting) {
+    const cur = engManualLines[engManualCur];
+    if (cur && cur.length) {
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 3;
+      cur.forEach(c => ctx.strokeRect(ox + c.x * cellSize + 1, oy + c.y * cellSize + 1, cellSize - 2, cellSize - 2));
+    }
+  }
+
   // ─── 📄 Панель спецификаций (вес + мощность) внизу карты ───
   if (showSpecs) {
     drawMapSpecs(ctx, W, oy + cy * cellSize + 20, extra, cab, cx, cy);
@@ -3501,7 +3847,7 @@ function drawMapSpecs(ctx, W, topY, extra, cab, cx, cy) {
   ctx.font = 'bold 15px sans-serif';
   ctx.fillText('Пик: ' + (maxW/1000).toFixed(1) + ' кВт', colX(1), ty);
   ty += 22;
-  ctx.fillStyle = '#8fe;'.slice(0,4) === '#8fe' ? '#8fef8f' : '#8fef8f';
+  ctx.fillStyle = '#8fef8f';
   ctx.font = '13px sans-serif';
   ctx.fillText('Средн.: ' + (avgW/1000).toFixed(1) + ' кВт', colX(1), ty);
   ty += 19;
@@ -3562,7 +3908,7 @@ function engBuildSpecsData() {
 
   // ── Линии (порты) ──
   const dir = parseInt(getEl('engDir').value);
-  const snake = buildSnake(cx, cy, cab.perLine, dir);
+  const snake = engGetLines(cx, cy, cab, dir);
   const numLines = snake.lines.length;
 
   // ── Процессор (авто или вручную) ──
@@ -4007,10 +4353,15 @@ ${paramRange('Power', 2, 0.1, 7)}
 // Сохранить карту PNG
 function engSavePNG() {
   const canvas = getEl('engCanvas');
+  // Перерисовываем без подсветки ручного режима, сохраняем и возвращаем как было
+  engMapExporting = true;
+  engCalc();
   const link = document.createElement('a');
   link.download = `raskluchenie_${engCabType}_${getEl('engCX').value}x${getEl('engCY').value}.png`;
   link.href = canvas.toDataURL('image/png');
   link.click();
+  engMapExporting = false;
+  engCalc();
 }
 
 // ─── Определяем: это перезагрузка (F5) или новое открытие вкладки? ───────────
@@ -4033,6 +4384,7 @@ writeScreenToForm();
 renderTabs();
 makeCollapsible();
 engToggleStartEdge();   // показать/скрыть выбор края по состоянию галочки
+engToggleManual();      // ✏️ показать/скрыть инструменты ручной разводки
 engSyncCabWeight();     // ⚖️ подставить вес кабинета по типу
 generate();
 
